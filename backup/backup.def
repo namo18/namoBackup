@@ -1,0 +1,14 @@
+## 本分文件保存的路径
+SAVE_FOLDER=h:\temp\test
+
+## 不备份的文件
+IGNORE_FILE=~$*,*.tmp,*.bak,thumbs.db,*.dwl,*.lnk,*.log
+
+## MySql服务器设置
+SERVERHOST=
+DATABASE_NAME=
+USER=
+PASSWORD=
+
+## BACKUP_FOLDER可以是多个，格式如下(路径, 每隔几天备份一次, 偏移天数)
+BACKUP_FOLDER=D:\1.工作,3,0

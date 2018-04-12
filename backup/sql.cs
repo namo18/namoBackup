@@ -1,0 +1,214 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Text;
+using MySql.Data.MySqlClient;
+using System.IO;
+using System.Data;
+
+namespace backupCommand
+{
+    public class SqlClass
+    {
+        private MySqlConnection conn;
+        private static SqlClass instance;
+        private static Dictionary<string, string> file_name_list = new Dictionary<string, string>();
+        private static Dictionary<string, string> path_dict = new Dictionary<string, string>();
+        private static List<string> exist_md5 = new List<string>();
+        public static string SERVER_HOST;
+        public static string DATABASE_NAME;
+        public static string SQL_USER;
+        public static string SQL_PASSWORD;
+
+        private SqlClass()
+        {
+            string ConnectionString =string.Format(@"server={0};port=3306;user id={1};password={2};database={3};allow zero datetime=true",SERVER_HOST,SQL_USER,SQL_PASSWORD,DATABASE_NAME);
+            this.conn = new MySqlConnection(ConnectionString);
+        }
+
+        public void init()
+        {
+            MySqlDataAdapter adp = new MySqlDataAdapter("select id,path from tb_path", conn);
+            DataTable dt = new DataTable();
+            adp.Fill(dt);
+            foreach (DataRow row in dt.Rows)
+            {
+                path_dict.Add(row["path"].ToString(), row["id"].ToString());
+            }
+            dt.Clear();
+            adp.SelectCommand.CommandText = "select id,filename from filename";
+            adp.Fill(dt);
+            foreach (DataRow row in dt.Rows)
+            {
+                file_name_list.Add(row["filename"].ToString(), row["id"].ToString());
+            }
+
+            dt.Clear();
+            adp.SelectCommand.CommandText = "select md5 from backupinfo group by md5";
+            adp.Fill(dt);
+
+            foreach (DataRow row in dt.Rows)
+            {
+                exist_md5.Add(row["md5"].ToString());
+            }
+        }
+        public static SqlClass GetInstance()
+        {
+            if (instance == null)
+            {
+                instance = new SqlClass();
+            }
+            return instance;
+        }
+
+        public string getFileNameId(string filename)
+        {
+            if(file_name_list.ContainsKey(filename))
+            {
+                return file_name_list[filename];
+            }
+            else
+            {
+                MySqlCommand sqlcmd = conn.CreateCommand();
+                sqlcmd.CommandText = string.Format(@"INSERT INTO `filename` (`filename`) values('{0}')",filename.Replace("'","\\'"));
+                conn.Open();
+                sqlcmd.ExecuteNonQuery();
+                conn.Close();
+
+                file_name_list.Add(filename, sqlcmd.LastInsertedId.ToString());
+                return sqlcmd.LastInsertedId.ToString();
+            }
+        }
+
+        public DataTable getFileList(DateTime datetime, int pathId)
+        {
+            string selectCommand = string.Format(@"select t1.id as id, t1.filename as filename, t2.md5 as md5 from filename as t1 right join 
+(select filename_id,md5 from backupinfo where backup_date between '{0}' and '{1}' and filepath_id = {2}) as t2
+on t2.filename_id = t1.id",datetime.ToString("yyyy-MM-dd"),datetime.AddDays(1).ToString("yyyy-MM-dd"),pathId);
+            Console.WriteLine(selectCommand);
+
+            MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
+
+            DataTable table = new DataTable();
+            adp.Fill(table);
+
+            return table;
+        }
+
+        public void insert(FileInfo fi,string md5,int depth, StreamWriter log)
+        {
+            string filePathId = getFolderPathId(fi.DirectoryName, depth);
+            string fileNameId = getFileNameId(fi.Name);
+            try
+            {
+                MySqlCommand sqlcmd = conn.CreateCommand();
+
+                sqlcmd.CommandText = string.Format(@"INSERT INTO `backupinfo`
+(`backup_date`,
+`filepath_id`,
+`filename_id`,
+`modifydate`,
+`md5`)
+VALUES
+('{0}',
+'{1}',
+'{2}',
+'{3}',
+'{4}');", DateTime.Now.ToString("yyyy-M-d HH-mm-ss"), filePathId, fileNameId, fi.LastWriteTime.ToString("yyyy-MM-dd HH-mm-ss"), md5);
+                conn.Open();
+                sqlcmd.ExecuteNonQuery();
+                conn.Close();
+            }
+            catch(Exception err)
+            {
+                log.WriteLine(err.Message);
+                log.WriteLine(err.StackTrace);
+            }
+
+            if(conn.State == ConnectionState.Open)
+            {
+                conn.Close();
+            }
+        }
+       
+        public string getFolderPathId(string fpath, int depth)
+        {
+            string retid = "";
+            if(path_dict.ContainsKey(fpath))
+            {
+                return path_dict[fpath];
+            }
+            else
+            {
+                MySqlCommand sqlcmd = conn.CreateCommand();
+
+                sqlcmd.CommandText = string.Format(@"INSERT INTO `tb_path` (`path`,`depth`) VALUES ('{0}',{1});", fpath.Replace("\\", "\\\\").Replace("'", "\\'"),depth);
+                conn.Open();
+                sqlcmd.ExecuteNonQuery();
+                retid = sqlcmd.LastInsertedId.ToString();
+                conn.Close();
+                path_dict.Add(fpath, retid);
+                return retid;
+            }
+        }
+
+        public bool checkExist(string md5)
+        {
+            return exist_md5.Contains(md5);
+        }
+/// <summary>
+/// 
+/// </summary>
+/// <param name="datetime">备份日期</param>
+/// <returns>返回数据库中根目录id列表</returns>
+        public int[] getRestoreBasePath(DateTime datetime)
+        {
+            int[] basePathIds;
+            string selectCommand = string.Format(@"select * from tb_path where id in (
+SELECT filepath_id FROM filebackupsys.backupinfo
+where backup_date between '{0}' and '{1}'
+group by filepath_id
+)
+and depth = 1",datetime.ToString("yyyy-MM-dd"),datetime.AddDays(1).ToString("yyyy-MM-dd"));
+
+            MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand,conn);
+
+            DataTable dt = new DataTable();
+            adp.Fill(dt);
+            basePathIds = new int[dt.Rows.Count];
+         
+            for (int i=0;i< dt.Rows.Count; i++)
+            {
+                basePathIds[i] = (int)dt.Rows[i]["id"];
+            }
+            return basePathIds;
+        }
+
+        public DataTable getChildDirectory(int id)
+        {
+            string selectCommand = string.Format(@"select id, path, depth 
+from tb_path 
+where path like replace(concat(getPathByid({0}),'\\%'),'\\','\\\\') and depth = getpathDepthById({0})+1;",id);
+            MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
+            DataTable dt = new DataTable();
+            adp.Fill(dt);
+            return dt;
+        }
+        public DataTable getPathList(int[] ids)
+        {
+            string selectCommand = @"select id, path, depth from tb_path where id in (";
+            foreach(int i in ids)
+            {
+                selectCommand +=i.ToString()+ ",";
+            }
+
+            selectCommand += "'');";
+
+            MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand,conn);
+
+            DataTable dt = new DataTable();
+            adp.Fill(dt);
+            
+            return dt;
+        }
+    }
+}

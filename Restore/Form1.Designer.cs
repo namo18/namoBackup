@@ -35,15 +35,15 @@
             this.imageList1 = new System.Windows.Forms.ImageList(this.components);
             this.listView1 = new System.Windows.Forms.ListView();
             this.filename = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.md5 = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.imageList2 = new System.Windows.Forms.ImageList(this.components);
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
+            this.btn_restore_directory = new System.Windows.Forms.Button();
+            this.btn_restore_file = new System.Windows.Forms.Button();
             this.textBox1 = new System.Windows.Forms.TextBox();
             this.label2 = new System.Windows.Forms.Label();
             this.label1 = new System.Windows.Forms.Label();
             this.splitContainer2 = new System.Windows.Forms.SplitContainer();
-            this.imageList2 = new System.Windows.Forms.ImageList(this.components);
-            this.md5 = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.btn_restore_file = new System.Windows.Forms.Button();
-            this.btn_restore_directory = new System.Windows.Forms.Button();
             this.directoryEntry1 = new System.DirectoryServices.DirectoryEntry();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).BeginInit();
             this.splitContainer1.Panel1.SuspendLayout();
@@ -101,7 +101,19 @@
             // filename
             // 
             this.filename.Text = "文件名";
-            this.filename.Width = 150;
+            this.filename.Width = 400;
+            // 
+            // md5
+            // 
+            this.md5.Text = "索引";
+            this.md5.Width = 300;
+            // 
+            // imageList2
+            // 
+            this.imageList2.ImageStream = ((System.Windows.Forms.ImageListStreamer)(resources.GetObject("imageList2.ImageStream")));
+            this.imageList2.TransparentColor = System.Drawing.Color.Transparent;
+            this.imageList2.Images.SetKeyName(0, "folder.ico");
+            this.imageList2.Images.SetKeyName(1, "TextFile.ico");
             // 
             // splitContainer1
             // 
@@ -126,6 +138,26 @@
             this.splitContainer1.Size = new System.Drawing.Size(818, 488);
             this.splitContainer1.SplitterDistance = 99;
             this.splitContainer1.TabIndex = 3;
+            // 
+            // btn_restore_directory
+            // 
+            this.btn_restore_directory.Location = new System.Drawing.Point(406, 59);
+            this.btn_restore_directory.Name = "btn_restore_directory";
+            this.btn_restore_directory.Size = new System.Drawing.Size(75, 23);
+            this.btn_restore_directory.TabIndex = 5;
+            this.btn_restore_directory.Text = "目录恢复";
+            this.btn_restore_directory.UseVisualStyleBackColor = true;
+            this.btn_restore_directory.Click += new System.EventHandler(this.btn_restore_directory_Click);
+            // 
+            // btn_restore_file
+            // 
+            this.btn_restore_file.Location = new System.Drawing.Point(498, 59);
+            this.btn_restore_file.Name = "btn_restore_file";
+            this.btn_restore_file.Size = new System.Drawing.Size(75, 23);
+            this.btn_restore_file.TabIndex = 4;
+            this.btn_restore_file.Text = "文件恢复";
+            this.btn_restore_file.UseVisualStyleBackColor = true;
+            this.btn_restore_file.Click += new System.EventHandler(this.btn_restore_file_Click);
             // 
             // textBox1
             // 
@@ -168,36 +200,6 @@
             this.splitContainer2.Size = new System.Drawing.Size(818, 385);
             this.splitContainer2.SplitterDistance = 165;
             this.splitContainer2.TabIndex = 3;
-            // 
-            // imageList2
-            // 
-            this.imageList2.ImageStream = ((System.Windows.Forms.ImageListStreamer)(resources.GetObject("imageList2.ImageStream")));
-            this.imageList2.TransparentColor = System.Drawing.Color.Transparent;
-            this.imageList2.Images.SetKeyName(0, "folder.ico");
-            this.imageList2.Images.SetKeyName(1, "TextFile.ico");
-            // 
-            // md5
-            // 
-            this.md5.Text = "索引";
-            // 
-            // btn_restore_file
-            // 
-            this.btn_restore_file.Location = new System.Drawing.Point(498, 59);
-            this.btn_restore_file.Name = "btn_restore_file";
-            this.btn_restore_file.Size = new System.Drawing.Size(75, 23);
-            this.btn_restore_file.TabIndex = 4;
-            this.btn_restore_file.Text = "文件恢复";
-            this.btn_restore_file.UseVisualStyleBackColor = true;
-            this.btn_restore_file.Click += new System.EventHandler(this.btn_restore_file_Click);
-            // 
-            // btn_restore_directory
-            // 
-            this.btn_restore_directory.Location = new System.Drawing.Point(406, 59);
-            this.btn_restore_directory.Name = "btn_restore_directory";
-            this.btn_restore_directory.Size = new System.Drawing.Size(75, 23);
-            this.btn_restore_directory.TabIndex = 5;
-            this.btn_restore_directory.Text = "目录恢复";
-            this.btn_restore_directory.UseVisualStyleBackColor = true;
             // 
             // Form1
             // 

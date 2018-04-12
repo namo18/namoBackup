@@ -12,7 +12,7 @@ using SevenZip;
 
 namespace Restore
 {
-    public struct MyNode
+    public struct MyNodeTag
     {
         public int id;
         public bool loaded;
@@ -85,7 +85,7 @@ namespace Restore
                 DirectoryInfo dirInfo = new DirectoryInfo(row["path"].ToString());
 
                 TreeNode node = new TreeNode(dirInfo.Name, 0, 0);
-                MyNode nodeTag = new MyNode();
+                MyNodeTag nodeTag = new MyNodeTag();
                 nodeTag.id = (int)row["id"];
                 nodeTag.loaded = false;
 
@@ -98,7 +98,7 @@ namespace Restore
         private void treeView1_BeforeExpand(object sender, TreeViewCancelEventArgs e)
         {
             TreeNode currNode= e.Node;
-            MyNode tag = (MyNode)currNode.Tag;
+            MyNodeTag tag = (MyNodeTag)currNode.Tag;
             if (!tag.loaded)
             {
                 currNode.Nodes.Clear();
@@ -114,7 +114,7 @@ namespace Restore
                     DirectoryInfo dirInfo = new DirectoryInfo(row["path"].ToString());
 
                     TreeNode node = new TreeNode(dirInfo.Name, 0, 0);
-                    MyNode nodeTag = new MyNode();
+                    MyNodeTag nodeTag = new MyNodeTag();
                     nodeTag.id = (int)row["id"];
                     nodeTag.loaded = false;
 
@@ -128,9 +128,9 @@ namespace Restore
         private void treeView1_AfterSelect(object sender, TreeViewEventArgs e)
         {
             listView1.Items.Clear();
-            MyNode nodeTag = (MyNode)e.Node.Tag;
+            MyNodeTag nodeTag = (MyNodeTag)e.Node.Tag;
             DataTable dt = sql.getFileList(DateTime.Parse(dateTimePicker1.Text), nodeTag.id);
-            Console.WriteLine(dt.Rows.Count);
+            
             foreach(DataRow row in dt.Rows)
             {
                 ListViewItem item = new ListViewItem(new string[] { row["filename"].ToString(),row["md5"].ToString()},1);
@@ -140,11 +140,6 @@ namespace Restore
 
         private void btn_restore_file_Click(object sender, EventArgs e)
         {
-            //string zipfile = @"h:\temp\test\27\B4\27B40DDC6FCB19D4D26940A0107B8001.7z";
-
-            //var extractor = new SevenZipExtractor(zipfile, PASSWORD);
-            //extractor.ExtractArchive("c:\\temp");
-
             FolderBrowserDialog sfd = new FolderBrowserDialog();
             if (sfd.ShowDialog() == DialogResult.OK)
             {
@@ -154,12 +149,20 @@ namespace Restore
                     string zipFile = string.Format(@"{0}{1}\{2}\{3}.7z", SAVE_FOLDER, md5.Substring(0, 2), md5.Substring(2, 2), md5);
                     if (File.Exists(zipFile))
                     {
-                        Console.WriteLine(string.Format("{0}   {1}    {2}",sfd.SelectedPath,zipFile,item.Text));
                         var extractor = new SevenZipExtractor(zipFile, PASSWORD);
                         extractor.ExtractArchive(sfd.SelectedPath);
                     }
                 }
+                if (MessageBox.Show("解压完毕,是否打开解压目录？", "", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) == DialogResult.OK)
+                {
+                    Process.Start(sfd.SelectedPath);
+                }
             }
+        }
+
+        private void btn_restore_directory_Click(object sender, EventArgs e)
+        {
+
         }
     }
 }

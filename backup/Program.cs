@@ -129,29 +129,6 @@ namespace backupCommand
             }
         }
 
-        static private void ListFileMd5(DirectoryInfo folder, StreamWriter sw)
-        {
-            try
-            {
-                FileInfo[] files = folder.GetFiles();
-                foreach (FileInfo fi in files)
-                {
-                    string md5 = quick_hash(fi.FullName);
-                    sw.WriteLine(String.Format("{0}   {1}", md5, fi.Name));
-                }
-
-                DirectoryInfo[] folders = folder.GetDirectories();
-                foreach (DirectoryInfo subfolder in folders)
-                {
-                    ListFileMd5(subfolder, sw);
-                }
-            }
-            catch(Exception e)
-            {
-                Console.WriteLine(e.Message);
-                Console.WriteLine(e.StackTrace);
-            }
-        }
         public static bool isIgnore(FileInfo fileInfo)
         {
             Regex reg;
@@ -174,11 +151,13 @@ namespace backupCommand
                 {
                     if (fileInfo.Length > 0 && !isIgnore(fileInfo))
                     {
-                        string md5 = quick_hash(fileInfo.FullName);
+                        string md5 = quick_hash(fileInfo.FullName,sw);
+                        if (md5.Length > 5)
+                        {
+                            Backup(fileInfo, new DirectoryInfo(backupTargetDir), md5, sw);
 
-                        Backup(fileInfo, new DirectoryInfo(backupTargetDir), md5, sw);
-                        
-                        sql.insert(fileInfo, md5,depth, sw);
+                            sql.insert(fileInfo, md5, depth, sw);
+                        }
                     }
                 }
                 catch (Exception err)
@@ -342,7 +321,7 @@ namespace backupCommand
             }
             return string.Empty;
         }
-        static string quick_hash(string FilePath)
+        static string quick_hash(string FilePath,StreamWriter sw)
         {
             string md5 = string.Empty;
             try
@@ -412,8 +391,9 @@ namespace backupCommand
                 //Console.WriteLine(md5);
             }catch(Exception e)
             {
-                Console.WriteLine(e.Message);
-                Console.WriteLine(e.StackTrace);
+                sw.WriteLine(string.Format("Hash文件出错， 文件名：{0}",FilePath));
+                sw.WriteLine(e.Message);
+                sw.WriteLine(e.StackTrace);
             }
                 return md5;
         }

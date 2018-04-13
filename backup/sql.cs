@@ -62,44 +62,65 @@ namespace backupCommand
 
         public string getFileNameId(string filename)
         {
-            if(file_name_list.ContainsKey(filename))
+            if (file_name_list.ContainsKey(filename))
             {
                 return file_name_list[filename];
             }
             else
             {
-                MySqlCommand sqlcmd = conn.CreateCommand();
-                sqlcmd.CommandText = string.Format(@"INSERT INTO `filename` (`filename`) values('{0}')",filename.Replace("'","\\'"));
-                conn.Open();
-                sqlcmd.ExecuteNonQuery();
-                conn.Close();
+                try
+                {
+                    MySqlCommand sqlcmd = conn.CreateCommand();
+                    sqlcmd.CommandText = string.Format(@"INSERT INTO `filename` (`filename`) values('{0}')", filename.Replace("'", "\\'"));
+                    conn.Open();
+                    sqlcmd.ExecuteNonQuery();
+                    conn.Close();
 
-                file_name_list.Add(filename, sqlcmd.LastInsertedId.ToString());
-                return sqlcmd.LastInsertedId.ToString();
+                    file_name_list.Add(filename, sqlcmd.LastInsertedId.ToString());
+                    return sqlcmd.LastInsertedId.ToString();
+                }
+                catch (Exception e)
+                {
+                    return string.Empty;
+                }
+                finally
+                {
+                    if(conn.State== ConnectionState.Open)
+                    {
+                        conn.Close();
+                    }
+                }
             }
         }
 
         public DataTable getFileList(DateTime datetime, int pathId)
         {
-            string selectCommand = string.Format(@"select t1.id as id, t1.filename as filename, t2.md5 as md5 from filename as t1 right join 
-(select filename_id,md5 from backupinfo where backup_date between '{0}' and '{1}' and filepath_id = {2}) as t2
-on t2.filename_id = t1.id",datetime.ToString("yyyy-MM-dd"),datetime.AddDays(1).ToString("yyyy-MM-dd"),pathId);
-            Console.WriteLine(selectCommand);
-
-            MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
-
             DataTable table = new DataTable();
-            adp.Fill(table);
+            try
+            {
+                string selectCommand = string.Format(@"select t1.id as id, t1.filename as filename, t2.md5 as md5 from filename as t1 right join 
+(select filename_id,md5 from backupinfo where backup_date between '{0}' and '{1}' and filepath_id = {2}) as t2
+on t2.filename_id = t1.id", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1).ToString("yyyy-MM-dd"), pathId);
+                Console.WriteLine(selectCommand);
 
+                MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
+
+                adp.Fill(table);
+            }
+            catch(Exception e)
+            {
+                throw e;
+            }
             return table;
         }
 
         public void insert(FileInfo fi,string md5,int depth, StreamWriter log)
         {
-            string filePathId = getFolderPathId(fi.DirectoryName, depth);
-            string fileNameId = getFileNameId(fi.Name);
             try
             {
+                string filePathId = getFolderPathId(fi.DirectoryName, depth);
+                string fileNameId = getFileNameId(fi.Name);
+
                 MySqlCommand sqlcmd = conn.CreateCommand();
 
                 sqlcmd.CommandText = string.Format(@"INSERT INTO `backupinfo`
@@ -139,15 +160,29 @@ VALUES
             }
             else
             {
-                MySqlCommand sqlcmd = conn.CreateCommand();
+                try
+                {
+                    MySqlCommand sqlcmd = conn.CreateCommand();
 
-                sqlcmd.CommandText = string.Format(@"INSERT INTO `tb_path` (`path`,`depth`) VALUES ('{0}',{1});", fpath.Replace("\\", "\\\\").Replace("'", "\\'"),depth);
-                conn.Open();
-                sqlcmd.ExecuteNonQuery();
-                retid = sqlcmd.LastInsertedId.ToString();
-                conn.Close();
-                path_dict.Add(fpath, retid);
-                return retid;
+                    sqlcmd.CommandText = string.Format(@"INSERT INTO `tb_path` (`path`,`depth`) VALUES ('{0}',{1});", fpath.Replace("\\", "\\\\").Replace("'", "\\'"), depth);
+
+                    sqlcmd.ExecuteNonQuery();
+                    retid = sqlcmd.LastInsertedId.ToString();
+                    conn.Close();
+                    path_dict.Add(fpath, retid);
+                    return retid;
+                }
+                catch (Exception e)
+                {
+                    throw e;
+                }
+                finally
+                {
+                    if (conn.State == ConnectionState.Open)
+                    {
+                        conn.Close();
+                    }
+                }
             }
         }
 

@@ -156,7 +156,7 @@ namespace backupCommand
                         {
                             Backup(fileInfo, new DirectoryInfo(backupTargetDir), md5, sw);
 
-                            sql.insert(fileInfo, md5, depth, sw);
+                            sql.insert(fileInfo, md5, depth);
                         }
                     }
                 }

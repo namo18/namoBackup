@@ -70,18 +70,20 @@ namespace backupCommand
             {
                 try
                 {
+                    if(conn.State!= ConnectionState.Open)
+                    {
+                        conn.Open();
+                    }
                     MySqlCommand sqlcmd = conn.CreateCommand();
                     sqlcmd.CommandText = string.Format(@"INSERT INTO `filename` (`filename`) values('{0}')", filename.Replace("'", "\\'"));
-                    conn.Open();
-                    sqlcmd.ExecuteNonQuery();
-                    conn.Close();
 
-                    file_name_list.Add(filename, sqlcmd.LastInsertedId.ToString());
+                    sqlcmd.ExecuteNonQuery();
+                    file_name_list.Add(filename, sqlcmd.LastInsertedId.ToString());                    
                     return sqlcmd.LastInsertedId.ToString();
                 }
                 catch (Exception e)
                 {
-                    return string.Empty;
+                    throw e;
                 }
                 finally
                 {
@@ -91,6 +93,12 @@ namespace backupCommand
                     }
                 }
             }
+        }
+
+
+        private void Conn_StateChange(object sender, StateChangeEventArgs e)
+        {
+            throw new NotImplementedException();
         }
 
         public DataTable getFileList(DateTime datetime, int pathId)
@@ -114,10 +122,12 @@ on t2.filename_id = t1.id", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1)
             return table;
         }
 
-        public void insert(FileInfo fi,string md5,int depth, StreamWriter log)
+        public void insert(FileInfo fi,string md5,int depth)
         {
             try
             {
+                if (conn.State != ConnectionState.Open) conn.Open();
+
                 string filePathId = getFolderPathId(fi.DirectoryName, depth);
                 string fileNameId = getFileNameId(fi.Name);
 
@@ -135,19 +145,19 @@ VALUES
 '{2}',
 '{3}',
 '{4}');", DateTime.Now.ToString("yyyy-M-d HH-mm-ss"), filePathId, fileNameId, fi.LastWriteTime.ToString("yyyy-MM-dd HH-mm-ss"), md5);
-                conn.Open();
+                
                 sqlcmd.ExecuteNonQuery();
-                conn.Close();
             }
-            catch(Exception err)
+            catch (Exception err)
             {
-                log.WriteLine(err.Message);
-                log.WriteLine(err.StackTrace);
+                throw err;
             }
-
-            if(conn.State == ConnectionState.Open)
+            finally
             {
-                conn.Close();
+                if (conn.State == ConnectionState.Open)
+                {
+                    conn.Close();
+                }
             }
         }
        

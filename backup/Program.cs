@@ -54,23 +54,10 @@ namespace backupCommand
                         int intervalDay = 1;
                         int variableDay = 0;
 
-                        try
-                        {
-                            intervalDay = Convert.ToInt32(temp[1]);
-                        }
-                        catch (Exception e)
-                        {
+                        try { intervalDay = Convert.ToInt32(temp[1]); } catch { }
 
-                        }
+                        try { variableDay = Convert.ToInt32(temp[2]); } catch { }
 
-                        try
-                        {
-                            variableDay = Convert.ToInt32(temp[2]);
-                        }
-                        catch (Exception e)
-                        {
-
-                        }
                         if (DateTime.Now.DayOfYear % intervalDay == variableDay)
                         {
                             backupFolderList.Add(souceFolder);
@@ -195,16 +182,21 @@ namespace backupCommand
                 FileInfo targetFile = new FileInfo(string.Format("{0}\\{1}.7z", targetDirctory.FullName, md5));
 
                 //压缩文件正没有正常结束时， 压缩包是坏的， 需要删除重新压缩
-                if(!sql.checkExist(md5) && targetFile.Exists)
+                try
+                {
+                    var extractor = new SevenZipExtractor(targetFile.FullName);
+                    var t = extractor.IsSolid;
+                }
+                catch
                 {
                     try
                     {
                         targetFile.Delete();
                     }
-                    catch(Exception e)
+                    catch (Exception err)
                     {
-                        log.WriteLine(e.Message);
-                        log.WriteLine(e.StackTrace);
+                        log.WriteLine(err.Message);
+                        log.WriteLine(err.StackTrace);
                     }
                 }
 

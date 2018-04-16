@@ -11,7 +11,7 @@ namespace backupCommand
     {
         private MySqlConnection conn;
         private static SqlClass instance;
-        private static Dictionary<string, string> file_name_list = new Dictionary<string, string>();
+        private static Dictionary<string, string> file_name_dict = new Dictionary<string, string>();
         private static Dictionary<string, string> path_dict = new Dictionary<string, string>();
         private static List<string> exist_md5 = new List<string>();
         public static string SERVER_HOST;
@@ -39,7 +39,7 @@ namespace backupCommand
             adp.Fill(dt);
             foreach (DataRow row in dt.Rows)
             {
-                file_name_list.Add(row["filename"].ToString(), row["id"].ToString());
+                file_name_dict.Add(row["filename"].ToString(), row["id"].ToString());
             }
 
             dt.Clear();
@@ -62,9 +62,9 @@ namespace backupCommand
 
         public string getFileNameId(string filename)
         {
-            if (file_name_list.ContainsKey(filename))
+            if (file_name_dict.ContainsKey(filename))
             {
-                return file_name_list[filename];
+                return file_name_dict[filename];
             }
             else
             {
@@ -78,7 +78,7 @@ namespace backupCommand
                     sqlcmd.CommandText = string.Format(@"INSERT INTO `filename` (`filename`) values('{0}')", filename.Replace("'", "\\'"));
 
                     sqlcmd.ExecuteNonQuery();
-                    file_name_list.Add(filename, sqlcmd.LastInsertedId.ToString());                    
+                    file_name_dict.Add(filename, sqlcmd.LastInsertedId.ToString());                    
                     return sqlcmd.LastInsertedId.ToString();
                 }
                 catch (Exception e)

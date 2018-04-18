@@ -25,14 +25,14 @@ DROP TABLE IF EXISTS `backupinfo`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `backupinfo` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `backup_date` datetime DEFAULT NULL,
   `filepath_id` int(11) DEFAULT NULL,
   `filename_id` int(11) DEFAULT NULL,
   `modifydate` datetime DEFAULT NULL,
   `md5` varchar(45) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=24227 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -46,7 +46,7 @@ CREATE TABLE `filename` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `filename` varchar(400) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2508 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -59,9 +59,9 @@ DROP TABLE IF EXISTS `tb_path`;
 CREATE TABLE `tb_path` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `path` varchar(1000) DEFAULT NULL,
-  `depth` int(11) DEFAULT NULL,
+  `parentId` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=173 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -117,4 +117,4 @@ DELIMITER ;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2018-04-12 15:26:04
+-- Dump completed on 2018-04-18 13:05:55

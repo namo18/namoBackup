@@ -34,16 +34,16 @@ namespace backupCommand
                 while (!sr.EndOfStream)
                 {
                     string[] line = sr.ReadLine().Split('=');
-                    if(line.Length>1 && line[0].Trim().ToUpper() == "SAVE_FOLDER")
+                    if (line.Length > 1 && line[0].Trim().ToUpper() == "SAVE_FOLDER")
                     {
                         backupTargetDir = line[1];
                     }
-                    else if (line.Length>0 && line[0].Trim().ToUpper() == "IGNORE_FILE")
+                    else if (line.Length > 0 && line[0].Trim().ToUpper() == "IGNORE_FILE")
                     {
                         string[] temp = line[1].Split(',');
-                        for(int i = 0;i< temp.Length; i++)
+                        for (int i = 0; i < temp.Length; i++)
                         {
-                            ignore_file.Add(string.Format("^{0}$", temp[i].ToLower().Trim().Replace("*",".*")));
+                            ignore_file.Add(string.Format("^{0}$", temp[i].Replace("$", "\\$").ToLower().Trim().Replace("*", ".*")));
                         }
                     }
                     else if (line.Length > 1 && line[0].Trim().ToUpper() == "BACKUP_FOLDER")
@@ -63,7 +63,7 @@ namespace backupCommand
                             backupFolderList.Add(souceFolder);
                         }
                     }
-                    else if(line.Length > 1 && line[0].Trim().ToUpper() == "SERVERHOST")
+                    else if (line.Length > 1 && line[0].Trim().ToUpper() == "SERVERHOST")
                     {
                         SqlClass.SERVER_HOST = line[1].Trim();
                     }
@@ -95,14 +95,14 @@ namespace backupCommand
 
             string log_directory = string.Format("{0}\\log\\{1}", curFile.DirectoryName, DateTime.Now.ToString("yyyy-M-d"));
             if (!Directory.Exists(log_directory)) Directory.CreateDirectory(log_directory);
-            
+
             foreach (DirectoryInfo folder in backupFolderList)
             {
                 StreamWriter sw = new StreamWriter(string.Format("{0}\\{1}_{2}.txt", log_directory, folder.Name, DateTime.Now.ToString("yyyy-M-d HH-mm-ss")));
                 DateTime dt = DateTime.Now;
                 if (folder.Exists)
                 {
-                    backupFolder(folder, 1, sw);
+                    backupFolder(folder, "-1", sw);
                 }
                 else
                 {
@@ -118,37 +118,38 @@ namespace backupCommand
 
         public static bool isIgnore(FileInfo fileInfo)
         {
-            Regex reg;
-            foreach(string pattern in ignore_file)
+            foreach (string pattern in ignore_file)
             {
-                reg = new Regex(pattern);
-                if(reg.IsMatch(fileInfo.Name.ToLower()))
+                if (Regex.IsMatch(fileInfo.Name.ToLower(), pattern))
                 {
                     return true;
                 }
-            }            
+            }
             return false;
         }
-        static private void backupFolder(DirectoryInfo folder,int depth, StreamWriter sw)
+        static private void backupFolder(DirectoryInfo folder, string parentFloderId, StreamWriter sw)
         {
             FileInfo[] files = folder.GetFiles();
+            string floderId = sql.getFolderPathId(folder.FullName, parentFloderId);
             foreach (FileInfo fileInfo in files)
             {
                 try
                 {
                     if (fileInfo.Length > 0 && !isIgnore(fileInfo))
                     {
-                        string md5 = quick_hash(fileInfo.FullName,sw);
+                        string md5 = quick_hash(fileInfo, sw);
                         if (md5.Length > 5)
                         {
                             Backup(fileInfo, new DirectoryInfo(backupTargetDir), md5, sw);
 
-                            sql.insert(fileInfo, md5, depth);
+                            sql.insert(fileInfo, md5, floderId);
                         }
                     }
                 }
                 catch (Exception err)
                 {
+                    sw.WriteLine(DateTime.Now.ToString());
+                    sw.WriteLine("File:" + fileInfo.FullName);
                     sw.WriteLine(err.Message);
                     sw.WriteLine(err.StackTrace);
                 }
@@ -158,7 +159,7 @@ namespace backupCommand
 
             foreach (DirectoryInfo subfolder in folders)
             {
-                backupFolder(subfolder,depth+1, sw);
+                backupFolder(subfolder, floderId, sw);
             }
         }
 
@@ -175,7 +176,7 @@ namespace backupCommand
                 string sub1 = md5.Substring(0, 2);
                 string sub2 = md5.Substring(2, 2);
 
-                DirectoryInfo targetDirctory = new DirectoryInfo(String.Format("{0}\\{1}\\{2}",targetFolder, sub1, sub2));
+                DirectoryInfo targetDirctory = new DirectoryInfo(String.Format("{0}\\{1}\\{2}", targetFolder, sub1, sub2));
 
                 if (!targetDirctory.Exists) targetDirctory.Create();
 
@@ -203,7 +204,7 @@ namespace backupCommand
                 if (!targetFile.Exists)
                 {
                     SevenZipCompressor tmp = new SevenZipCompressor();
-                    tmp.CompressFilesEncrypted(targetFile.FullName, PASSWORD, new string[] {sourceFile.FullName});
+                    tmp.CompressFilesEncrypted(targetFile.FullName, PASSWORD, new string[] { sourceFile.FullName });
                 }
             }
             catch (Exception e)
@@ -306,20 +307,20 @@ namespace backupCommand
 
                 }
             }
-            catch(Exception e)
+            catch (Exception e)
             {
                 Console.WriteLine(e.Message);
                 Console.WriteLine(e.StackTrace);
             }
             return string.Empty;
         }
-        static string quick_hash(string FilePath,StreamWriter sw)
+        static string quick_hash(FileInfo fileInfo, StreamWriter sw)
         {
             string md5 = string.Empty;
             try
             {
-                FileInfo fileInfo = new FileInfo(FilePath);
-                using (Stream inputStream = File.Open(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                //FileInfo fileInfo = new FileInfo(FilePath);
+                using (Stream inputStream = File.Open(fileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
                     int MINSIZE = 1024 * 16;
                     int QUICK_HASH_SIZE = 1024 * 1024 * 100;
@@ -381,13 +382,14 @@ namespace backupCommand
                     md5 = md5.Replace("-", "");
                 }
                 //Console.WriteLine(md5);
-            }catch(Exception e)
+            }
+            catch (Exception e)
             {
-                sw.WriteLine(string.Format("Hash文件出错， 文件名：{0}",FilePath));
+                sw.WriteLine(string.Format("Hash文件出错， 文件名：{0}", fileInfo.FullName));
                 sw.WriteLine(e.Message);
                 sw.WriteLine(e.StackTrace);
             }
-                return md5;
+            return md5;
         }
     }
 }

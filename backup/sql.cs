@@ -18,10 +18,11 @@ namespace backupCommand
         public static string DATABASE_NAME;
         public static string SQL_USER;
         public static string SQL_PASSWORD;
+        private List<string> InsertCache = new List<string>();
 
         private SqlClass()
         {
-            string ConnectionString =string.Format(@"server={0};port=3306;user id={1};password={2};database={3};allow zero datetime=true",SERVER_HOST,SQL_USER,SQL_PASSWORD,DATABASE_NAME);
+            string ConnectionString = string.Format(@"server={0};port=3306;user id={1};password={2};database={3};allow zero datetime=true", SERVER_HOST, SQL_USER, SQL_PASSWORD, DATABASE_NAME);
             this.conn = new MySqlConnection(ConnectionString);
         }
 
@@ -70,7 +71,7 @@ namespace backupCommand
             {
                 try
                 {
-                    if(conn.State!= ConnectionState.Open)
+                    if (conn.State != ConnectionState.Open)
                     {
                         conn.Open();
                     }
@@ -78,7 +79,7 @@ namespace backupCommand
                     sqlcmd.CommandText = string.Format(@"INSERT INTO `filename` (`filename`) values('{0}')", filename.Replace("'", "\\'"));
 
                     sqlcmd.ExecuteNonQuery();
-                    file_name_dict.Add(filename, sqlcmd.LastInsertedId.ToString());                    
+                    file_name_dict.Add(filename, sqlcmd.LastInsertedId.ToString());
                     return sqlcmd.LastInsertedId.ToString();
                 }
                 catch (Exception e)
@@ -87,7 +88,7 @@ namespace backupCommand
                 }
                 finally
                 {
-                    if(conn.State== ConnectionState.Open)
+                    if (conn.State == ConnectionState.Open)
                     {
                         conn.Close();
                     }
@@ -115,38 +116,40 @@ on t2.filename_id = t1.id", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1)
 
                 adp.Fill(table);
             }
-            catch(Exception e)
+            catch (Exception e)
             {
                 throw e;
             }
             return table;
         }
 
-        public void insert(FileInfo fi,string md5,int depth)
+        public void insert(FileInfo fi, string md5, string filePathId)
         {
             try
             {
-                if (conn.State != ConnectionState.Open) conn.Open();
-
-                string filePathId = getFolderPathId(fi.DirectoryName, depth);
                 string fileNameId = getFileNameId(fi.Name);
 
-                MySqlCommand sqlcmd = conn.CreateCommand();
+                string now = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss");
+                string fileModifyDate = fi.LastWriteTime.ToString("yyyy-MM-dd HH-mm-ss");
 
-                sqlcmd.CommandText = string.Format(@"INSERT INTO `backupinfo`
-(`backup_date`,
-`filepath_id`,
-`filename_id`,
-`modifydate`,
-`md5`)
-VALUES
-('{0}',
-'{1}',
-'{2}',
-'{3}',
-'{4}');", DateTime.Now.ToString("yyyy-M-d HH-mm-ss"), filePathId, fileNameId, fi.LastWriteTime.ToString("yyyy-MM-dd HH-mm-ss"), md5);
-                
-                sqlcmd.ExecuteNonQuery();
+                InsertCache.Add(string.Format(@"('{0}','{1}','{2}','{3}','{4}')", now, filePathId, fileNameId, fileModifyDate, md5));
+
+                if (InsertCache.Count > 1000)
+                {
+                    if (conn.State != ConnectionState.Open) conn.Open();
+
+                    MySqlCommand sqlcmd = conn.CreateCommand();
+
+                    sqlcmd.CommandText = "INSERT INTO `backupinfo` (`backup_date`,`filepath_id`,`filename_id`,`modifydate`,`md5`)VALUES ";
+                    foreach (string values in InsertCache)
+                    {
+                        sqlcmd.CommandText += values + ",";
+                    }
+                    sqlcmd.CommandText = sqlcmd.CommandText.Substring(0, sqlcmd.CommandText.Length - 1);
+                    sqlcmd.ExecuteNonQuery();
+
+                    InsertCache.Clear();
+                }
             }
             catch (Exception err)
             {
@@ -160,11 +163,11 @@ VALUES
                 }
             }
         }
-       
-        public string getFolderPathId(string fpath, int depth)
+
+        public string getFolderPathId(string fpath, string parentFoloderId)
         {
             string retid = "";
-            if(path_dict.ContainsKey(fpath))
+            if (path_dict.ContainsKey(fpath))
             {
                 return path_dict[fpath];
             }
@@ -173,8 +176,8 @@ VALUES
                 try
                 {
                     MySqlCommand sqlcmd = conn.CreateCommand();
-
-                    sqlcmd.CommandText = string.Format(@"INSERT INTO `tb_path` (`path`,`depth`) VALUES ('{0}',{1});", fpath.Replace("\\", "\\\\").Replace("'", "\\'"), depth);
+                    conn.Open();
+                    sqlcmd.CommandText = string.Format(@"INSERT INTO `tb_path` (`path`,`parentId`) VALUES ('{0}',{1});", fpath.Replace("\\", "\\\\").Replace("'", "\\'"), parentFoloderId);
 
                     sqlcmd.ExecuteNonQuery();
                     retid = sqlcmd.LastInsertedId.ToString();
@@ -200,11 +203,11 @@ VALUES
         {
             return exist_md5.Contains(md5);
         }
-/// <summary>
-/// 
-/// </summary>
-/// <param name="datetime">备份日期</param>
-/// <returns>返回数据库中根目录id列表</returns>
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="datetime">备份日期</param>
+        /// <returns>返回数据库中根目录id列表</returns>
         public int[] getRestoreBasePath(DateTime datetime)
         {
             int[] basePathIds;
@@ -213,15 +216,15 @@ SELECT filepath_id FROM filebackupsys.backupinfo
 where backup_date between '{0}' and '{1}'
 group by filepath_id
 )
-and depth = 1",datetime.ToString("yyyy-MM-dd"),datetime.AddDays(1).ToString("yyyy-MM-dd"));
+and depth = 1", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1).ToString("yyyy-MM-dd"));
 
-            MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand,conn);
+            MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
 
             DataTable dt = new DataTable();
             adp.Fill(dt);
             basePathIds = new int[dt.Rows.Count];
-         
-            for (int i=0;i< dt.Rows.Count; i++)
+
+            for (int i = 0; i < dt.Rows.Count; i++)
             {
                 basePathIds[i] = (int)dt.Rows[i]["id"];
             }
@@ -232,7 +235,7 @@ and depth = 1",datetime.ToString("yyyy-MM-dd"),datetime.AddDays(1).ToString("yyy
         {
             string selectCommand = string.Format(@"select id, path, depth 
 from tb_path 
-where path like replace(concat(getPathByid({0}),'\\%'),'\\','\\\\') and depth = getpathDepthById({0})+1;",id);
+where path like replace(concat(getPathByid({0}),'\\%'),'\\','\\\\') and depth = getpathDepthById({0})+1;", id);
             MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
             DataTable dt = new DataTable();
             adp.Fill(dt);
@@ -241,18 +244,18 @@ where path like replace(concat(getPathByid({0}),'\\%'),'\\','\\\\') and depth = 
         public DataTable getPathList(int[] ids)
         {
             string selectCommand = @"select id, path, depth from tb_path where id in (";
-            foreach(int i in ids)
+            foreach (int i in ids)
             {
-                selectCommand +=i.ToString()+ ",";
+                selectCommand += i.ToString() + ",";
             }
 
             selectCommand += "'');";
 
-            MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand,conn);
+            MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
 
             DataTable dt = new DataTable();
             adp.Fill(dt);
-            
+
             return dt;
         }
     }

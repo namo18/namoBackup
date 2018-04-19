@@ -1,8 +1,11 @@
 ## 本分文件保存的路径
-SAVE_FOLDER=h:\temp\test
+SAVE_FOLDER=\\localhost\Backup\storage
 
 ## 不备份的文件
 IGNORE_FILE=~$*,*.tmp,*.bak,thumbs.db,*.dwl,*.lnk,*.log
+
+## 不备份的目录关键字
+IGNORE_FOLDER_KEY=
 
 ## MySql服务器设置
 SERVERHOST=
@@ -11,4 +14,10 @@ USER=
 PASSWORD=
 
 ## BACKUP_FOLDER可以是多个，格式如下(路径, 每隔几天备份一次, 偏移天数)
-BACKUP_FOLDER=D:\1.工作,3,0
+BACKUP_FOLDER=c:\temp,  3, 1
+BACKUP_FOLDER=c:\test,  3, 2
+
+
+## 不进行备份的文件夹
+EXCLUDE_FOLDER=c:\temp\123
+EXCLUDE_FOLDER=c:\temp\456

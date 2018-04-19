@@ -21,8 +21,10 @@ namespace backupCommand
         public static int BUFSIZE = 1024 * 64;
 
         public static List<String> ignore_file = new List<string>();
+        public static List<String> ignore_Folder = new List<string>();
 
         public static List<DirectoryInfo> backupFolderList = new List<DirectoryInfo>();
+        public static List<DirectoryInfo> excludeFolderList = new List<DirectoryInfo>();
         private static string backupTargetDir;
 
         static void readDef(string defFile)
@@ -38,12 +40,20 @@ namespace backupCommand
                     {
                         backupTargetDir = line[1];
                     }
-                    else if (line.Length > 0 && line[0].Trim().ToUpper() == "IGNORE_FILE")
+                    else if (line.Length > 1 && line[0].Trim().ToUpper() == "IGNORE_FILE")
                     {
                         string[] temp = line[1].Split(',');
                         for (int i = 0; i < temp.Length; i++)
                         {
                             ignore_file.Add(string.Format("^{0}$", temp[i].Replace("$", "\\$").ToLower().Trim().Replace("*", ".*")));
+                        }
+                    }
+                    else if (line.Length > 1 && line[0].Trim().ToUpper() == "IGNORE_FOLDER_KEY")
+                    {
+                        string[] temp = line[1].Split(',');
+                        for (int i = 0; i < temp.Length; i++)
+                        {
+                            ignore_Folder.Add(temp[i].Replace("$", "\\$").ToLower().Trim());
                         }
                     }
                     else if (line.Length > 1 && line[0].Trim().ToUpper() == "BACKUP_FOLDER")
@@ -62,6 +72,11 @@ namespace backupCommand
                         {
                             backupFolderList.Add(souceFolder);
                         }
+                    }
+                    else if (line.Length > 1 && line[0].Trim().ToUpper() == "EXCLUDE_FOLDER")
+                    {
+                        DirectoryInfo excludeFolder = new DirectoryInfo(line[1].Trim());
+                        excludeFolderList.Add(excludeFolder);
                     }
                     else if (line.Length > 1 && line[0].Trim().ToUpper() == "SERVERHOST")
                     {
@@ -127,8 +142,30 @@ namespace backupCommand
             }
             return false;
         }
+
+        public static bool isIgnoreFolder(DirectoryInfo dInfo)
+        {
+            foreach(string pattern in ignore_Folder)
+            {
+                if (Regex.IsMatch(dInfo.Name.ToLower(), pattern))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         static private void backupFolder(DirectoryInfo folder, string parentFloderId, StreamWriter sw)
         {
+            foreach(DirectoryInfo excludeFloder in excludeFolderList)
+            {
+                if(excludeFloder.FullName.Equals(folder.FullName))
+                {
+                    return;
+                }
+            }
+            if (isIgnoreFolder(folder)) return;
+
             FileInfo[] files = folder.GetFiles();
             string floderId = sql.getFolderPathId(folder.FullName, parentFloderId);
             foreach (FileInfo fileInfo in files)
@@ -175,8 +212,12 @@ namespace backupCommand
 
                 string sub1 = md5.Substring(0, 2);
                 string sub2 = md5.Substring(2, 2);
+                string sub3 = md5.Substring(4, 2);
 
-                DirectoryInfo targetDirctory = new DirectoryInfo(String.Format("{0}\\{1}\\{2}", targetFolder, sub1, sub2));
+                DirectoryInfo secondDirctory = new DirectoryInfo(String.Format("{0}\\{1}\\{2}", targetFolder, sub1, sub2));
+                DirectoryInfo targetDirctory = new DirectoryInfo(String.Format("{0}\\{1}\\{2}\\{3}", targetFolder, sub1, sub2,sub3));
+
+                MoveFileToThrid(string.Format("{0}\\{1}.7z", secondDirctory.FullName, md5));
 
                 if (!targetDirctory.Exists) targetDirctory.Create();
 
@@ -211,6 +252,18 @@ namespace backupCommand
             {
                 log.WriteLine(e.Message);
                 log.WriteLine(e.StackTrace);
+            }
+        }
+
+        private static void MoveFileToThrid(string filePath)
+        {
+            FileInfo f = new FileInfo(filePath);
+            if (f.Exists)
+            {
+                DirectoryInfo thrid = new DirectoryInfo(f.Directory.FullName + "\\" + f.Name.Substring(4, 2));
+                if (!thrid.Exists) thrid.Create();
+
+                f.MoveTo(thrid.FullName + "\\" + f.Name);
             }
         }
 

@@ -107,9 +107,9 @@ namespace backupCommand
             DataTable table = new DataTable();
             try
             {
-                string selectCommand = string.Format(@"select t1.id as id, t1.filename as filename, t2.md5 as md5 from filename as t1 right join 
-(select filename_id,md5 from backupinfo where backup_date between '{0}' and '{1}' and filepath_id = {2}) as t2
-on t2.filename_id = t1.id", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1).ToString("yyyy-MM-dd"), pathId);
+                string selectCommand = string.Format(@"select t1.id as id, t1.filename as filename,t2.modifydate as modifydate, t2.md5 as md5 from filename as t1 right join 
+(select filename_id,modifydate,md5 from backupinfo where backup_date between '{0}' and '{1}' and filepath_id = {2}) as t2
+on t2.filename_id = t1.id", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1).AddHours(12).ToString("yyyy-MM-dd HH:mm"), pathId);
                 Console.WriteLine(selectCommand);
 
                 MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
@@ -216,7 +216,7 @@ SELECT filepath_id FROM filebackupsys.backupinfo
 where backup_date between '{0}' and '{1}'
 group by filepath_id
 )
-and depth = 1", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1).ToString("yyyy-MM-dd"));
+and parentid = -1", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1).ToString("yyyy-MM-dd"));
 
             MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
 
@@ -233,9 +233,9 @@ and depth = 1", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1).ToString("y
 
         public DataTable getChildDirectory(int id)
         {
-            string selectCommand = string.Format(@"select id, path, depth 
+            string selectCommand = string.Format(@"select id, path, parentid 
 from tb_path 
-where path like replace(concat(getPathByid({0}),'\\%'),'\\','\\\\') and depth = getpathDepthById({0})+1;", id);
+where parentid = {0};", id);
             MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
             DataTable dt = new DataTable();
             adp.Fill(dt);
@@ -243,7 +243,7 @@ where path like replace(concat(getPathByid({0}),'\\%'),'\\','\\\\') and depth = 
         }
         public DataTable getPathList(int[] ids)
         {
-            string selectCommand = @"select id, path, depth from tb_path where id in (";
+            string selectCommand = @"select id, path, parentid from tb_path where id in (";
             foreach (int i in ids)
             {
                 selectCommand += i.ToString() + ",";

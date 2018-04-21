@@ -129,11 +129,28 @@ namespace Restore
         {
             listView1.Items.Clear();
             MyNodeTag nodeTag = (MyNodeTag)e.Node.Tag;
+            textBox1.Text = nodeTag.id.ToString();
             DataTable dt = sql.getFileList(DateTime.Parse(dateTimePicker1.Text), nodeTag.id);
             
             foreach(DataRow row in dt.Rows)
             {
-                ListViewItem item = new ListViewItem(new string[] { row["filename"].ToString(),row["md5"].ToString()},1);
+                string md5 = row["md5"].ToString();
+
+                string sub1 = md5.Substring(0, 2);
+                string sub2 = md5.Substring(2, 2);
+                string sub3 = md5.Substring(4, 2);
+
+                DirectoryInfo d = new DirectoryInfo(SAVE_FOLDER);
+
+                FileInfo zipFileInfo = new FileInfo(string.Format(@"{0}\{1}\{2}\{3}.7z", d.FullName, sub1, sub2, md5));
+                if(zipFileInfo.Exists)
+                {
+                    d = new DirectoryInfo(d.FullName + "\\" + sub3);
+                    if (!d.Exists) d.Create();
+                    zipFileInfo.MoveTo(string.Format(@"{0}\{1}.7z", d.FullName, md5));
+                }
+
+                ListViewItem item = new ListViewItem(new string[] { row["filename"].ToString(),row["modifydate"].ToString(), row["md5"].ToString()},1);
                 listView1.Items.Add(item);
             }
         }
@@ -145,8 +162,13 @@ namespace Restore
             {
                 foreach (ListViewItem item in listView1.SelectedItems)
                 {
-                    string md5 = item.SubItems[1].Text;
-                    string zipFile = string.Format(@"{0}{1}\{2}\{3}.7z", SAVE_FOLDER, md5.Substring(0, 2), md5.Substring(2, 2), md5);
+                    string md5 = item.SubItems[2].Text;
+
+                    string sub1 = md5.Substring(0, 2);
+                    string sub2 = md5.Substring(2, 2);
+                    string sub3 = md5.Substring(4, 2);
+                    DirectoryInfo d = new DirectoryInfo(SAVE_FOLDER);
+                    string zipFile = string.Format(@"{0}\{1}\{2}\{3}\{4}.7z", d.FullName, sub1, sub2,sub3, md5);
                     if (File.Exists(zipFile))
                     {
                         var extractor = new SevenZipExtractor(zipFile, PASSWORD);

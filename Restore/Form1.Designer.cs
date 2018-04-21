@@ -35,6 +35,7 @@
             this.imageList1 = new System.Windows.Forms.ImageList(this.components);
             this.listView1 = new System.Windows.Forms.ListView();
             this.filename = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.modify = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.md5 = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.imageList2 = new System.Windows.Forms.ImageList(this.components);
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
@@ -71,7 +72,7 @@
             this.treeView1.Location = new System.Drawing.Point(0, 0);
             this.treeView1.Name = "treeView1";
             this.treeView1.SelectedImageIndex = 0;
-            this.treeView1.Size = new System.Drawing.Size(165, 385);
+            this.treeView1.Size = new System.Drawing.Size(300, 385);
             this.treeView1.TabIndex = 1;
             this.treeView1.BeforeExpand += new System.Windows.Forms.TreeViewCancelEventHandler(this.treeView1_BeforeExpand);
             this.treeView1.AfterSelect += new System.Windows.Forms.TreeViewEventHandler(this.treeView1_AfterSelect);
@@ -87,12 +88,13 @@
             // 
             this.listView1.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
             this.filename,
+            this.modify,
             this.md5});
             this.listView1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.listView1.LargeImageList = this.imageList2;
             this.listView1.Location = new System.Drawing.Point(0, 0);
             this.listView1.Name = "listView1";
-            this.listView1.Size = new System.Drawing.Size(649, 385);
+            this.listView1.Size = new System.Drawing.Size(751, 385);
             this.listView1.SmallImageList = this.imageList1;
             this.listView1.TabIndex = 2;
             this.listView1.UseCompatibleStateImageBehavior = false;
@@ -103,8 +105,14 @@
             this.filename.Text = "文件名";
             this.filename.Width = 400;
             // 
+            // modify
+            // 
+            this.modify.Text = "修改日期";
+            this.modify.Width = 100;
+            // 
             // md5
             // 
+            this.md5.DisplayIndex = 1;
             this.md5.Text = "索引";
             this.md5.Width = 300;
             // 
@@ -135,7 +143,7 @@
             // splitContainer1.Panel2
             // 
             this.splitContainer1.Panel2.Controls.Add(this.splitContainer2);
-            this.splitContainer1.Size = new System.Drawing.Size(818, 488);
+            this.splitContainer1.Size = new System.Drawing.Size(1055, 488);
             this.splitContainer1.SplitterDistance = 99;
             this.splitContainer1.TabIndex = 3;
             // 
@@ -147,6 +155,7 @@
             this.btn_restore_directory.TabIndex = 5;
             this.btn_restore_directory.Text = "目录恢复";
             this.btn_restore_directory.UseVisualStyleBackColor = true;
+            this.btn_restore_directory.Visible = false;
             this.btn_restore_directory.Click += new System.EventHandler(this.btn_restore_directory_Click);
             // 
             // btn_restore_file
@@ -197,15 +206,15 @@
             // splitContainer2.Panel2
             // 
             this.splitContainer2.Panel2.Controls.Add(this.listView1);
-            this.splitContainer2.Size = new System.Drawing.Size(818, 385);
-            this.splitContainer2.SplitterDistance = 165;
+            this.splitContainer2.Size = new System.Drawing.Size(1055, 385);
+            this.splitContainer2.SplitterDistance = 300;
             this.splitContainer2.TabIndex = 3;
             // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(818, 488);
+            this.ClientSize = new System.Drawing.Size(1055, 488);
             this.Controls.Add(this.splitContainer1);
             this.Name = "Form1";
             this.Text = "Form1";
@@ -240,6 +249,7 @@
         private System.Windows.Forms.Button btn_restore_directory;
         private System.Windows.Forms.Button btn_restore_file;
         private System.DirectoryServices.DirectoryEntry directoryEntry1;
+        private System.Windows.Forms.ColumnHeader modify;
     }
 }
 

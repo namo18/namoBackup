@@ -5,11 +5,18 @@ using System.Text.RegularExpressions;
 using System.IO;
 using System.Security.Cryptography;
 using System.Diagnostics;
+using System.Threading;
 using SevenZip;
 
 
 namespace backupCommand
 {
+    class BackupFolderParameter
+    {
+       public DirectoryInfo folder;
+       public StreamWriter sw;
+       public String parendFolderId;
+    }
     class Program
     {
         static public SqlClass sql;
@@ -26,6 +33,8 @@ namespace backupCommand
         public static List<DirectoryInfo> backupFolderList = new List<DirectoryInfo>();
         public static List<DirectoryInfo> excludeFolderList = new List<DirectoryInfo>();
         private static string backupTargetDir;
+        private static int mThreadCount = 0;
+        private static object lock_object = new object();
 
         static void readDef(string defFile)
         {
@@ -107,28 +116,62 @@ namespace backupCommand
             sql = SqlClass.GetInstance();
             sql.init();
 
-
+            ThreadPool.SetMaxThreads(20, 20);
             string log_directory = string.Format("{0}\\log\\{1}", curFile.DirectoryName, DateTime.Now.ToString("yyyy-M-d"));
             if (!Directory.Exists(log_directory)) Directory.CreateDirectory(log_directory);
 
-            foreach (DirectoryInfo folder in backupFolderList)
+            StreamWriter log = new StreamWriter(string.Format("{0}\\{1}.txt", log_directory, DateTime.Now.ToString("yyyy-M-d HH-mm-ss")));
+
+            try
             {
-                StreamWriter sw = new StreamWriter(string.Format("{0}\\{1}_{2}.txt", log_directory, folder.Name, DateTime.Now.ToString("yyyy-M-d HH-mm-ss")));
-                DateTime dt = DateTime.Now;
-                if (folder.Exists)
+
+                foreach (DirectoryInfo folder in backupFolderList)
                 {
-                    backupFolder(folder, "-1", sw);
+                    StreamWriter sw = new StreamWriter(string.Format("{0}\\{1}_{2}.txt", log_directory, folder.Name, DateTime.Now.ToString("yyyy-M-d HH-mm-ss")));
+                    DateTime dt = DateTime.Now;
+                    if (folder.Exists)
+                    {
+                        BackupFolderParameter p = new BackupFolderParameter();
+                        p.folder = folder;
+                        p.parendFolderId = "-1";
+                        p.sw = sw;
+                        //Thread thread = new Thread(new ParameterizedThreadStart(backupFolder));
+                        lock (lock_object) mThreadCount++;
+                        //thread.Start(p);
+                        ThreadPool.QueueUserWorkItem(new WaitCallback(backupFolder), p);
+                        //backupFolder(folder, "-1", sw);
+                    }
+                    else
+                    {
+                        sw.WriteLine(string.Format("{0} 路径错误\n", folder.FullName));
+                    }
+                    sw.WriteLine("Hash 文件夹 {0}", folder.FullName);
+                    DateTime dt1 = DateTime.Now;
+                    TimeSpan ts = dt1 - dt;
+                    sw.WriteLine("总用时:{0} 小时 {1} 分钟 {2} 秒", ts.Hours, ts.Minutes, ts.Seconds);
+                    //sw.Close();
                 }
-                else
-                {
-                    sw.WriteLine(string.Format("{0} 路径错误\n", folder.FullName));
-                }
-                sw.WriteLine("Hash 文件夹 {0}", folder.FullName);
-                DateTime dt1 = DateTime.Now;
-                TimeSpan ts = dt1 - dt;
-                sw.WriteLine("总用时:{0} 小时 {1} 分钟 {2} 秒", ts.Hours, ts.Minutes, ts.Seconds);
-                sw.Close();
+                //sql.save_cache();
             }
+            catch (Exception e)
+            {
+                log.WriteLine(e.Message);
+                log.WriteLine(e.StackTrace);
+            }
+            //sql.save_cache();
+            
+            log.Close();
+            while (true)
+            {
+                Thread.Sleep(1000);
+                Console.WriteLine("Thread Count:" + mThreadCount.ToString());
+                if (mThreadCount <= 0)
+                {
+                    sql.save_cache();
+                    break;
+                }
+            }
+            Console.WriteLine("BackupFinished" + mThreadCount.ToString());
         }
 
         public static bool isIgnore(FileInfo fileInfo)
@@ -155,49 +198,78 @@ namespace backupCommand
             return false;
         }
 
-        static private void backupFolder(DirectoryInfo folder, string parentFloderId, StreamWriter sw)
+        static private void backupFolder(object obj)//DirectoryInfo folder, string parentFolderId, StreamWriter sw)
         {
-            foreach(DirectoryInfo excludeFloder in excludeFolderList)
+            DirectoryInfo folder = ((BackupFolderParameter)obj).folder;
+            String parentFolderId = ((BackupFolderParameter)obj).parendFolderId;
+            StreamWriter sw = ((BackupFolderParameter)obj).sw;
+            try
             {
-                if(excludeFloder.FullName.Equals(folder.FullName))
+                foreach (DirectoryInfo excludeFolder in excludeFolderList)
                 {
-                    return;
-                }
-            }
-            if (isIgnoreFolder(folder)) return;
-
-            FileInfo[] files = folder.GetFiles();
-            string floderId = sql.getFolderPathId(folder.FullName, parentFloderId);
-            foreach (FileInfo fileInfo in files)
-            {
-                try
-                {
-                    if (fileInfo.Length > 0 && !isIgnore(fileInfo))
+                    if (excludeFolder.FullName.Equals(folder.FullName))
                     {
-                        string md5 = quick_hash(fileInfo, sw);
-                        if (md5.Length > 5)
-                        {
-                            Backup(fileInfo, new DirectoryInfo(backupTargetDir), md5, sw);
+                        return;
+                    }
+                }
+                if (isIgnoreFolder(folder)) return;
 
-                            sql.insert(fileInfo, md5, floderId);
+                FileInfo[] files = folder.GetFiles();
+                string folderId = sql.getFolderPathId(folder.FullName, parentFolderId);
+                foreach (FileInfo fileInfo in files)
+                {
+                    try
+                    {
+                        if (fileInfo.Length > 0 && !isIgnore(fileInfo))
+                        {
+                            string md5 = quick_hash(fileInfo, sw);
+                            if (md5.Length > 5)
+                            {
+                                if (!sql.checkExist(md5))
+                                {
+                                    Backup(fileInfo, new DirectoryInfo(backupTargetDir), md5, sw);
+                                }
+
+                                sql.insert(fileInfo, md5, folderId);
+                            }
+                        }
+                    }
+                    catch (Exception err)
+                    {
+                        lock (sw)
+                        {
+                            sw.WriteLine(DateTime.Now.ToString());
+                            sw.WriteLine("File:" + fileInfo.FullName);
+                            sw.WriteLine(err.Message);
+                            sw.WriteLine(err.StackTrace);
                         }
                     }
                 }
-                catch (Exception err)
+
+                DirectoryInfo[] folders = folder.GetDirectories();
+
+                foreach (DirectoryInfo subfolder in folders)
                 {
-                    sw.WriteLine(DateTime.Now.ToString());
-                    sw.WriteLine("File:" + fileInfo.FullName);
-                    sw.WriteLine(err.Message);
-                    sw.WriteLine(err.StackTrace);
+                    //Thread thread = new Thread(new ParameterizedThreadStart(backupFolder));                    
+                    BackupFolderParameter p = new BackupFolderParameter();
+                    p.folder = subfolder;
+                    p.parendFolderId = folderId;
+                    
+                    p.sw = sw;
+                    lock (lock_object) mThreadCount++;
+                    //thread.Start(p);
+                    ThreadPool.QueueUserWorkItem(new WaitCallback(backupFolder), p);
+                    //backupFolder(p);
                 }
             }
-
-            DirectoryInfo[] folders = folder.GetDirectories();
-
-            foreach (DirectoryInfo subfolder in folders)
+            catch(Exception err)
             {
-                backupFolder(subfolder, floderId, sw);
+                sw.WriteLine("Folder: " + folder.FullName);
+                sw.Write(err.Message);
+                sw.WriteLine(err.StackTrace);
             }
+
+            lock (lock_object) mThreadCount--;
         }
 
 
@@ -214,13 +286,11 @@ namespace backupCommand
                 string sub2 = md5.Substring(2, 2);
                 string sub3 = md5.Substring(4, 2);
 
-                DirectoryInfo secondDirctory = new DirectoryInfo(String.Format("{0}\\{1}\\{2}", targetFolder, sub1, sub2));
+                DirectoryInfo secondDirctory = new DirectoryInfo(String.Format("{0}\\{1}\\{2}", targetFolder, sub1, sub2));                
                 DirectoryInfo targetDirctory = new DirectoryInfo(String.Format("{0}\\{1}\\{2}\\{3}", targetFolder, sub1, sub2,sub3));
-
-                MoveFileToThrid(string.Format("{0}\\{1}.7z", secondDirctory.FullName, md5));
-
                 if (!targetDirctory.Exists) targetDirctory.Create();
 
+                MoveFileToThrid(string.Format("{0}\\{1}.7z", secondDirctory.FullName, md5));
                 FileInfo targetFile = new FileInfo(string.Format("{0}\\{1}.7z", targetDirctory.FullName, md5));
 
                 //压缩文件正没有正常结束时， 压缩包是坏的， 需要删除重新压缩
@@ -248,10 +318,9 @@ namespace backupCommand
                     tmp.CompressFilesEncrypted(targetFile.FullName, PASSWORD, new string[] { sourceFile.FullName });
                 }
             }
-            catch (Exception e)
-            {
-                log.WriteLine(e.Message);
-                log.WriteLine(e.StackTrace);
+            catch
+            {                
+                throw new Exception("压缩文件错误"+sourceFile.FullName);
             }
         }
 
@@ -261,8 +330,6 @@ namespace backupCommand
             if (f.Exists)
             {
                 DirectoryInfo thrid = new DirectoryInfo(f.Directory.FullName + "\\" + f.Name.Substring(4, 2));
-                if (!thrid.Exists) thrid.Create();
-
                 f.MoveTo(thrid.FullName + "\\" + f.Name);
             }
         }
@@ -438,9 +505,12 @@ namespace backupCommand
             }
             catch (Exception e)
             {
-                sw.WriteLine(string.Format("Hash文件出错， 文件名：{0}", fileInfo.FullName));
-                sw.WriteLine(e.Message);
-                sw.WriteLine(e.StackTrace);
+                lock (sw)
+                {
+                    sw.WriteLine(string.Format("Hash文件出错， 文件名：{0}", fileInfo.FullName));
+                    sw.WriteLine(e.Message);
+                    sw.WriteLine(e.StackTrace);
+                }
             }
             return md5;
         }

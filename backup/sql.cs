@@ -69,28 +69,31 @@ namespace backupCommand
             }
             else
             {
-                try
+                lock (file_name_dict)
                 {
-                    if (conn.State != ConnectionState.Open)
+                    try
                     {
-                        conn.Open();
-                    }
-                    MySqlCommand sqlcmd = conn.CreateCommand();
-                    sqlcmd.CommandText = string.Format(@"INSERT INTO `filename` (`filename`) values('{0}')", filename.Replace("'", "\\'"));
+                        if (conn.State != ConnectionState.Open)
+                        {
+                            conn.Open();
+                        }
+                        MySqlCommand sqlcmd = conn.CreateCommand();
+                        sqlcmd.CommandText = string.Format(@"INSERT INTO `filename` (`filename`) values('{0}')", filename.Replace("'", "\\'"));
 
-                    sqlcmd.ExecuteNonQuery();
-                    file_name_dict.Add(filename, sqlcmd.LastInsertedId.ToString());
-                    return sqlcmd.LastInsertedId.ToString();
-                }
-                catch (Exception e)
-                {
-                    throw e;
-                }
-                finally
-                {
-                    if (conn.State == ConnectionState.Open)
+                        sqlcmd.ExecuteNonQuery();
+                        file_name_dict.Add(filename, sqlcmd.LastInsertedId.ToString());
+                        return sqlcmd.LastInsertedId.ToString();
+                    }
+                    catch (Exception e)
                     {
-                        conn.Close();
+                        throw e;
+                    }
+                    finally
+                    {
+                        if (conn.State == ConnectionState.Open)
+                        {
+                            conn.Close();
+                        }
                     }
                 }
             }
@@ -132,10 +135,28 @@ on t2.filename_id = t1.id", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1)
                 string now = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss");
                 string fileModifyDate = fi.LastWriteTime.ToString("yyyy-MM-dd HH-mm-ss");
 
-                InsertCache.Add(string.Format(@"('{0}','{1}','{2}','{3}','{4}')", now, filePathId, fileNameId, fileModifyDate, md5));
-
+                lock (InsertCache)
+                {
+                    InsertCache.Add(string.Format(@"('{0}','{1}','{2}','{3}','{4}')", now, filePathId, fileNameId, fileModifyDate, md5));
+                }
                 if (InsertCache.Count > 1000)
                 {
+                    save_cache();
+                }
+            }
+            catch (Exception err)
+            {
+                throw err;
+            }
+        }
+
+        public void save_cache()
+        {
+            lock (InsertCache)
+            {
+                try
+                {
+                    if (InsertCache.Count == 0) return;
                     if (conn.State != ConnectionState.Open) conn.Open();
 
                     MySqlCommand sqlcmd = conn.CreateCommand();
@@ -149,20 +170,22 @@ on t2.filename_id = t1.id", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1)
                     sqlcmd.ExecuteNonQuery();
 
                     InsertCache.Clear();
+
                 }
-            }
-            catch (Exception err)
-            {
-                throw err;
-            }
-            finally
-            {
-                if (conn.State == ConnectionState.Open)
+                catch (Exception err)
                 {
-                    conn.Close();
+                    throw err;
+                }
+                finally
+                {
+                    if (conn.State == ConnectionState.Open)
+                    {
+                        conn.Close();
+                    }
                 }
             }
         }
+    
 
         public string getFolderPathId(string fpath, string parentFoloderId)
         {
@@ -173,27 +196,30 @@ on t2.filename_id = t1.id", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1)
             }
             else
             {
-                try
+                lock (path_dict)
                 {
-                    MySqlCommand sqlcmd = conn.CreateCommand();
-                    conn.Open();
-                    sqlcmd.CommandText = string.Format(@"INSERT INTO `tb_path` (`path`,`parentId`) VALUES ('{0}',{1});", fpath.Replace("\\", "\\\\").Replace("'", "\\'"), parentFoloderId);
-
-                    sqlcmd.ExecuteNonQuery();
-                    retid = sqlcmd.LastInsertedId.ToString();
-                    conn.Close();
-                    path_dict.Add(fpath, retid);
-                    return retid;
-                }
-                catch (Exception e)
-                {
-                    throw e;
-                }
-                finally
-                {
-                    if (conn.State == ConnectionState.Open)
+                    try
                     {
+                        MySqlCommand sqlcmd = conn.CreateCommand();
+                        conn.Open();
+                        sqlcmd.CommandText = string.Format(@"INSERT INTO `tb_path` (`path`,`parentId`) VALUES ('{0}',{1});", fpath.Replace("\\", "\\\\").Replace("'", "\\'"), parentFoloderId);
+
+                        sqlcmd.ExecuteNonQuery();
+                        retid = sqlcmd.LastInsertedId.ToString();
                         conn.Close();
+                        path_dict.Add(fpath, retid);
+                        return retid;
+                    }
+                    catch (Exception e)
+                    {
+                        throw e;
+                    }
+                    finally
+                    {
+                        if (conn.State == ConnectionState.Open)
+                        {
+                            conn.Close();
+                        }
                     }
                 }
             }

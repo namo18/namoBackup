@@ -13,9 +13,10 @@ namespace backupCommand
 {
     class BackupFolderParameter
     {
-       public DirectoryInfo folder;
-       public StreamWriter sw;
-       public String parendFolderId;
+        public DirectoryInfo folder;
+        public StreamWriter sw;
+        public String parendFolderId;
+        public string histroyId;
     }
     class Program
     {
@@ -34,7 +35,9 @@ namespace backupCommand
         public static List<DirectoryInfo> excludeFolderList = new List<DirectoryInfo>();
         private static string backupTargetDir;
         private static int mThreadCount = 0;
-        private static object lock_object = new object();
+
+        public static readonly object countObj = new object();
+        public static readonly object logWriter = new object();
 
         static void readDef(string defFile)
         {
@@ -135,20 +138,25 @@ namespace backupCommand
                         p.folder = folder;
                         p.parendFolderId = "-1";
                         p.sw = sw;
+                        p.histroyId = sql.getNewBackupHistroyId(sql.getFolderPathId(p.folder.FullName, p.parendFolderId));
                         //Thread thread = new Thread(new ParameterizedThreadStart(backupFolder));
-                        lock (lock_object) mThreadCount++;
+                        lock (countObj) mThreadCount++;
                         //thread.Start(p);
+                        //Console.WriteLine(string.Format("Thread:{0}",p.folder.FullName));
                         ThreadPool.QueueUserWorkItem(new WaitCallback(backupFolder), p);
                         //backupFolder(folder, "-1", sw);
                     }
                     else
                     {
-                        sw.WriteLine(string.Format("{0} 路径错误\n", folder.FullName));
+                        lock (logWriter)
+                        {
+                            sw.WriteLine(string.Format("{0} 路径错误\n", folder.FullName));
+                        }
                     }
-                    sw.WriteLine("Hash 文件夹 {0}", folder.FullName);
-                    DateTime dt1 = DateTime.Now;
-                    TimeSpan ts = dt1 - dt;
-                    sw.WriteLine("总用时:{0} 小时 {1} 分钟 {2} 秒", ts.Hours, ts.Minutes, ts.Seconds);
+                    //sw.WriteLine("Hash 文件夹 {0}", folder.FullName);
+                    //DateTime dt1 = DateTime.Now;
+                    //TimeSpan ts = dt1 - dt;
+                    //sw.WriteLine("总用时:{0} 小时 {1} 分钟 {2} 秒", ts.Hours, ts.Minutes, ts.Seconds);
                     //sw.Close();
                 }
                 //sql.save_cache();
@@ -160,7 +168,6 @@ namespace backupCommand
             }
             //sql.save_cache();
             
-            log.Close();
             while (true)
             {
                 Thread.Sleep(1000);
@@ -172,6 +179,7 @@ namespace backupCommand
                 }
             }
             Console.WriteLine("BackupFinished" + mThreadCount.ToString());
+            log.Close();
         }
 
         public static bool isIgnore(FileInfo fileInfo)
@@ -203,6 +211,7 @@ namespace backupCommand
             DirectoryInfo folder = ((BackupFolderParameter)obj).folder;
             String parentFolderId = ((BackupFolderParameter)obj).parendFolderId;
             StreamWriter sw = ((BackupFolderParameter)obj).sw;
+            string histroyId = ((BackupFolderParameter)obj).histroyId;
             try
             {
                 foreach (DirectoryInfo excludeFolder in excludeFolderList)
@@ -227,21 +236,25 @@ namespace backupCommand
                             {
                                 if (!sql.checkExist(md5))
                                 {
+                                    //Console.WriteLine(String.Format("BackupFile:{0} {1}", md5, fileInfo.FullName));
                                     Backup(fileInfo, new DirectoryInfo(backupTargetDir), md5, sw);
                                 }
 
-                                sql.insert(fileInfo, md5, folderId);
+                                sql.insert(fileInfo, md5, folderId,histroyId);
                             }
                         }
                     }
                     catch (Exception err)
                     {
-                        lock (sw)
+                        Console.WriteLine(err.Message);
+                        Console.WriteLine(err.StackTrace);
+                        lock (logWriter)
                         {
                             sw.WriteLine(DateTime.Now.ToString());
                             sw.WriteLine("File:" + fileInfo.FullName);
                             sw.WriteLine(err.Message);
                             sw.WriteLine(err.StackTrace);
+                            sw.Flush();
                         }
                     }
                 }
@@ -256,22 +269,29 @@ namespace backupCommand
                     p.parendFolderId = folderId;
                     
                     p.sw = sw;
-                    lock (lock_object) mThreadCount++;
+                    p.histroyId = histroyId;
+                    lock (countObj) mThreadCount++;
                     //thread.Start(p);
+                    //Console.WriteLine(string.Format("Thread:{0}", p.folder.FullName));
                     ThreadPool.QueueUserWorkItem(new WaitCallback(backupFolder), p);
                     //backupFolder(p);
                 }
             }
             catch(Exception err)
             {
-                sw.WriteLine("Folder: " + folder.FullName);
-                sw.Write(err.Message);
-                sw.WriteLine(err.StackTrace);
+                //Console.WriteLine(err.StackTrace);
+                lock (logWriter)
+                {
+                    sw.WriteLine("Folder: " + folder.FullName);
+                    sw.Write(err.Message);
+                    sw.WriteLine(err.StackTrace);
+
+                    sw.Flush();
+                }
             }
 
-            lock (lock_object) mThreadCount--;
+            lock (countObj) mThreadCount--;
         }
-
 
         static void Backup(FileInfo sourceFile, DirectoryInfo targetFolder, string md5, StreamWriter log)
         {
@@ -318,8 +338,10 @@ namespace backupCommand
                     tmp.CompressFilesEncrypted(targetFile.FullName, PASSWORD, new string[] { sourceFile.FullName });
                 }
             }
-            catch
-            {                
+            catch(Exception e)
+            {
+                Console.WriteLine(e.Message);
+                Console.WriteLine(e.StackTrace);
                 throw new Exception("压缩文件错误"+sourceFile.FullName);
             }
         }
@@ -334,106 +356,7 @@ namespace backupCommand
             }
         }
 
-        private static string GetMD5Hash(string FilePath)
-        {
-            FileStream fs = null;
-            string tempPath = System.Environment.GetEnvironmentVariable("TMP");
-
-            string hash = "";
-            byte[] hashBytes;
-            MD5CryptoServiceProvider hasher = new MD5CryptoServiceProvider();
-
-            try
-            {
-                fs = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                hashBytes = hasher.ComputeHash(fs);
-                hash = BitConverter.ToString(hashBytes);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.ToString());
-            }
-            finally { if (fs != null) fs.Close(); }
-
-            return hash.Replace("-", "");
-        }
-
-        private static string get_filemd5(string FilePath)
-        {
-            try
-            {
-                FileInfo fileInfo = new FileInfo(FilePath);
-
-                if (fileInfo.Exists)
-                {
-                    long file_size = fileInfo.Length;
-
-                    /*
-                    其中MINSIZE定义了对齐的大小，BUFSIZE定义了HASH分块的大小，QUICK_HASH_SIZE则是定义了需要做快速HASH的文件大小阈值。
-                    方法很简单：文件小于QUICK_HASH_SIZE，则做全文件HASH，大于QUICK_HASH_SIZE则按BUFSIZE大小间隔取样，总取样数据大小为QUICK_HASH_SIZE。
-                    每个BUFSIZE块在文件中的分布为均匀的，但是每块又以MINSIZE对齐，另外，因为通常文件最经常被修改的部分是最后的部分，
-                    所以最后一块一定是与文件结尾对齐，以保证HASH部分包括文件的结尾。
-                    block_count = int((QUICK_HASH_SIZE + BUFSIZE / 2) / BUFSIZE
-                              if QUICK_HASH_SIZE else file_size / BUFSIZE)
-                    block_size = file_size * 1.0 / block_count if QUICK_HASH_SIZE \
-                        else BUFSIZ
-                    */
-                    long block_count;
-
-                    if (file_size > QUICK_HASH_SIZE)
-                    {
-                        block_count = (QUICK_HASH_SIZE + BUFSIZE / 2) / BUFSIZE;
-                    }
-                    else
-                    {
-                        block_count = file_size / BUFSIZE + 1;
-                    }
-
-                    long block_size = file_size / block_count;
-
-                    int bufferSize = int.Parse(BUFSIZE.ToString());//自定义缓冲区大小16K  
-
-                    byte[] buffer = new byte[bufferSize];
-
-
-                    HashAlgorithm hashAlgorithm = new MD5CryptoServiceProvider();
-
-
-                    MD5CryptoServiceProvider md5Provider = new MD5CryptoServiceProvider();
-
-                    Stream inputStream = File.Open(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-
-                    int readLength = 0;//每次读取长度  
-                    var output = new byte[bufferSize];
-                    //inputStream.Read();
-                    for (int i = 0; i < block_count; i++)
-                    {
-                        long pos = (long)(i * block_size / MINSIZE) * MINSIZE;
-                        inputStream.Seek(pos, SeekOrigin.Begin);
-                        readLength = inputStream.Read(buffer, 0, (int)BUFSIZE);
-
-                        Console.WriteLine(String.Format("i={0}:{1}", i, Encoding.UTF8.GetString(buffer)));
-                        //Console.WriteLine(pos);
-                        //计算MD5  
-                        hashAlgorithm.TransformBlock(buffer, 0, readLength, output, 0);
-                    }
-                    //完成最后计算，必须调用(由于上一部循环已经完成所有运算，所以调用此方法时后面的两个参数都为0)  
-                    hashAlgorithm.TransformFinalBlock(buffer, 0, 0);
-                    string md5 = BitConverter.ToString(hashAlgorithm.Hash);
-                    hashAlgorithm.Clear();
-                    inputStream.Close();
-                    md5 = md5.Replace("-", "");
-                    return md5;
-
-                }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-                Console.WriteLine(e.StackTrace);
-            }
-            return string.Empty;
-        }
+        
         static string quick_hash(FileInfo fileInfo, StreamWriter sw)
         {
             string md5 = string.Empty;
@@ -505,7 +428,8 @@ namespace backupCommand
             }
             catch (Exception e)
             {
-                lock (sw)
+                //Console.WriteLine(e.StackTrace);
+                lock (logWriter)
                 {
                     sw.WriteLine(string.Format("Hash文件出错， 文件名：{0}", fileInfo.FullName));
                     sw.WriteLine(e.Message);

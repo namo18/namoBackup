@@ -9,6 +9,7 @@ namespace backupCommand
 {
     public class SqlClass
     {
+        private readonly int CACHE_SIZE = 20;
         private MySqlConnection conn;
         private static SqlClass instance;
         private static Dictionary<string, string> file_name_dict = new Dictionary<string, string>();
@@ -19,6 +20,9 @@ namespace backupCommand
         public static string SQL_USER;
         public static string SQL_PASSWORD;
         private List<string> InsertCache = new List<string>();
+        public static readonly object connectionLocker = new object();
+        public static readonly object fileNameLocker = new object();
+        public static readonly object folderLocker = new object();
 
         private SqlClass()
         {
@@ -61,28 +65,60 @@ namespace backupCommand
             return instance;
         }
 
+        public string getNewBackupHistroyId(string folderId)
+        {
+            try
+            {
+                if (conn.State != ConnectionState.Open)
+                {
+                    conn.Open();
+                }
+                MySqlCommand sqlcmd = conn.CreateCommand();
+                sqlcmd.CommandText = string.Format(@"INSERT INTO `filebackupsys`.`histroy` (`backup_date`,`path_id`) VALUES ('{0}',{1});",
+                    DateTime.Now.ToString("yyyy-MM-dd"), folderId);
+
+                sqlcmd.ExecuteNonQuery();
+                
+                return sqlcmd.LastInsertedId.ToString();
+            }
+            catch (Exception e)
+            {
+                throw e;
+            }
+            finally
+            {
+                if (conn.State == ConnectionState.Open)
+                {
+                    conn.Close();
+                }
+            }
+        }
+
         public string getFileNameId(string filename)
         {
-            if (file_name_dict.ContainsKey(filename))
+            lock (fileNameLocker)
             {
-                return file_name_dict[filename];
-            }
-            else
-            {
-                lock (file_name_dict)
+                if (file_name_dict.ContainsKey(filename))
+                {
+                    return file_name_dict[filename];
+                }
+                else
                 {
                     try
                     {
-                        if (conn.State != ConnectionState.Open)
+                        lock (connectionLocker)
                         {
-                            conn.Open();
-                        }
-                        MySqlCommand sqlcmd = conn.CreateCommand();
-                        sqlcmd.CommandText = string.Format(@"INSERT INTO `filename` (`filename`) values('{0}')", filename.Replace("'", "\\'"));
+                            if (conn.State != ConnectionState.Open)
+                            {
+                                conn.Open();
+                            }
+                            MySqlCommand sqlcmd = conn.CreateCommand();
+                            sqlcmd.CommandText = string.Format(@"INSERT INTO `filename` (`filename`) values('{0}')", filename.Replace("'", "\\'"));
 
-                        sqlcmd.ExecuteNonQuery();
-                        file_name_dict.Add(filename, sqlcmd.LastInsertedId.ToString());
-                        return sqlcmd.LastInsertedId.ToString();
+                            sqlcmd.ExecuteNonQuery();
+                            file_name_dict.Add(filename, sqlcmd.LastInsertedId.ToString());
+                            return sqlcmd.LastInsertedId.ToString();
+                        }
                     }
                     catch (Exception e)
                     {
@@ -113,7 +149,7 @@ namespace backupCommand
                 string selectCommand = string.Format(@"select t1.id as id, t1.filename as filename,t2.modifydate as modifydate, t2.md5 as md5 from filename as t1 right join 
 (select filename_id,modifydate,md5 from backupinfo where backup_date between '{0}' and '{1}' and filepath_id = {2}) as t2
 on t2.filename_id = t1.id", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1).AddHours(12).ToString("yyyy-MM-dd HH:mm"), pathId);
-                Console.WriteLine(selectCommand);
+                //Console.WriteLine(selectCommand);
 
                 MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
 
@@ -126,22 +162,25 @@ on t2.filename_id = t1.id", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1)
             return table;
         }
 
-        public void insert(FileInfo fi, string md5, string filePathId)
+        public void insert(FileInfo fi, string md5, string filePathId,string histroyId)
         {
             try
             {
-                string fileNameId = getFileNameId(fi.Name);
-
-                string now = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss");
-                string fileModifyDate = fi.LastWriteTime.ToString("yyyy-MM-dd HH-mm-ss");
-
-                lock (InsertCache)
+                lock (connectionLocker)
                 {
-                    InsertCache.Add(string.Format(@"('{0}','{1}','{2}','{3}','{4}')", now, filePathId, fileNameId, fileModifyDate, md5));
-                }
-                if (InsertCache.Count > 1000)
-                {
-                    save_cache();
+                    string fileNameId = getFileNameId(fi.Name);
+
+                    string now = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss");
+                    string fileModifyDate = fi.LastWriteTime.ToString("yyyy-MM-dd HH-mm-ss");
+
+                    lock (InsertCache)
+                    {
+                        InsertCache.Add(string.Format(@"('{0}','{1}','{2}','{3}','{4}','{5}')", now, filePathId, fileNameId, fileModifyDate, md5,histroyId));
+                    }
+                    if (InsertCache.Count >= CACHE_SIZE)
+                    {
+                        save_cache();
+                    }
                 }
             }
             catch (Exception err)
@@ -152,63 +191,64 @@ on t2.filename_id = t1.id", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1)
 
         public void save_cache()
         {
-            lock (InsertCache)
+            try
             {
-                try
+                if (InsertCache.Count == 0) return;
+                if (conn.State != ConnectionState.Open) conn.Open();
+
+                MySqlCommand sqlcmd = conn.CreateCommand();
+
+                sqlcmd.CommandText = "INSERT INTO `backupinfo` (`backup_date`,`filepath_id`,`filename_id`,`modifydate`,`md5`,`histroy_id`)VALUES ";
+                foreach (string values in InsertCache)
                 {
-                    if (InsertCache.Count == 0) return;
-                    if (conn.State != ConnectionState.Open) conn.Open();
-
-                    MySqlCommand sqlcmd = conn.CreateCommand();
-
-                    sqlcmd.CommandText = "INSERT INTO `backupinfo` (`backup_date`,`filepath_id`,`filename_id`,`modifydate`,`md5`)VALUES ";
-                    foreach (string values in InsertCache)
-                    {
-                        sqlcmd.CommandText += values + ",";
-                    }
-                    sqlcmd.CommandText = sqlcmd.CommandText.Substring(0, sqlcmd.CommandText.Length - 1);
-                    sqlcmd.ExecuteNonQuery();
-
-                    InsertCache.Clear();
-
+                    sqlcmd.CommandText += values + ",";
                 }
-                catch (Exception err)
+                sqlcmd.CommandText = sqlcmd.CommandText.Substring(0, sqlcmd.CommandText.Length - 1);
+                //Console.WriteLine(sqlcmd.CommandText);
+                sqlcmd.ExecuteNonQuery();
+
+                InsertCache.Clear();
+
+            }
+            catch (Exception err)
+            {
+                throw err;
+            }
+            finally
+            {
+                if (conn.State == ConnectionState.Open)
                 {
-                    throw err;
-                }
-                finally
-                {
-                    if (conn.State == ConnectionState.Open)
-                    {
-                        conn.Close();
-                    }
+                    conn.Close();
                 }
             }
         }
-    
+
 
         public string getFolderPathId(string fpath, string parentFoloderId)
         {
-            string retid = "";
-            if (path_dict.ContainsKey(fpath))
+            lock (folderLocker)
             {
-                return path_dict[fpath];
-            }
-            else
-            {
-                lock (path_dict)
+                string retid = "";
+                if (path_dict.ContainsKey(fpath))
+                {
+                    return path_dict[fpath];
+                }
+                else
                 {
                     try
                     {
                         MySqlCommand sqlcmd = conn.CreateCommand();
-                        conn.Open();
-                        sqlcmd.CommandText = string.Format(@"INSERT INTO `tb_path` (`path`,`parentId`) VALUES ('{0}',{1});", fpath.Replace("\\", "\\\\").Replace("'", "\\'"), parentFoloderId);
+                        lock (connectionLocker)
+                        {
+                            conn.Open();
+                            sqlcmd.CommandText = string.Format(@"INSERT INTO `tb_path` (`path`,`parentId`) VALUES ('{0}',{1});", fpath.Replace("\\", "\\\\").Replace("'", "\\'"), parentFoloderId);
 
-                        sqlcmd.ExecuteNonQuery();
-                        retid = sqlcmd.LastInsertedId.ToString();
-                        conn.Close();
-                        path_dict.Add(fpath, retid);
-                        return retid;
+                            sqlcmd.ExecuteNonQuery();
+                            retid = sqlcmd.LastInsertedId.ToString();
+                            conn.Close();
+                            path_dict.Add(fpath, retid);
+                            return retid;
+                        }
                     }
                     catch (Exception e)
                     {

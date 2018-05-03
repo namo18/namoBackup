@@ -14,9 +14,9 @@ namespace Restore
 {
     public struct MyNodeTag
     {
-        public int id;
+        public int pathid;
         public bool loaded;
-        public int depth;
+        public int histroy_id;
     }
 
     public partial class Form1 : Form
@@ -77,17 +77,21 @@ namespace Restore
             treeView1.Nodes.Clear();
             DateTime dt;
             DateTime.TryParse(dateTimePicker1.Text, out dt);
-            int[] basePathIds = sql.getRestoreBasePath(dt);
-            textBox1.Text = basePathIds.Length.ToString();
-            DataTable pathTable = sql.getPathList(basePathIds);
+
+            Dictionary<int,int> basePathIds = sql.getRestoreBasePath(dt);
+            textBox1.Text = basePathIds.Keys.Count.ToString();
+            
+
+            DataTable pathTable = sql.getPathList(basePathIds.Keys);
             foreach (DataRow row in pathTable.Rows)
             {
                 DirectoryInfo dirInfo = new DirectoryInfo(row["path"].ToString());
 
                 TreeNode node = new TreeNode(dirInfo.Name, 0, 0);
                 MyNodeTag nodeTag = new MyNodeTag();
-                nodeTag.id = (int)row["id"];
+                nodeTag.pathid = (int)row["id"];
                 nodeTag.loaded = false;
+                nodeTag.histroy_id = basePathIds[(int)row["id"]];
 
                 node.Tag = nodeTag;
                 node.Nodes.Add("None");
@@ -106,7 +110,7 @@ namespace Restore
 
                 currNode.Tag = tag;
 
-                DataTable pathTable = sql.getChildDirectory(tag.id);
+                DataTable pathTable = sql.getChildDirectory(tag.pathid);
 
 
                 foreach (DataRow row in pathTable.Rows)
@@ -115,9 +119,9 @@ namespace Restore
 
                     TreeNode node = new TreeNode(dirInfo.Name, 0, 0);
                     MyNodeTag nodeTag = new MyNodeTag();
-                    nodeTag.id = (int)row["id"];
+                    nodeTag.pathid = (int)row["id"];
                     nodeTag.loaded = false;
-
+                    nodeTag.histroy_id = tag.histroy_id;
                     node.Tag = nodeTag;
                     node.Nodes.Add("None");
                     currNode.Nodes.Add(node);
@@ -129,8 +133,8 @@ namespace Restore
         {
             listView1.Items.Clear();
             MyNodeTag nodeTag = (MyNodeTag)e.Node.Tag;
-            textBox1.Text = nodeTag.id.ToString();
-            DataTable dt = sql.getFileList(DateTime.Parse(dateTimePicker1.Text), nodeTag.id);
+            textBox1.Text = nodeTag.pathid.ToString();
+            DataTable dt = sql.getFileList(nodeTag.histroy_id, nodeTag.pathid);
             
             foreach(DataRow row in dt.Rows)
             {
@@ -173,6 +177,10 @@ namespace Restore
                     {
                         var extractor = new SevenZipExtractor(zipFile, PASSWORD);
                         extractor.ExtractArchive(sfd.SelectedPath);
+                    }
+                    else
+                    {
+                        MessageBox.Show("备份文件不存在：" + zipFile);
                     }
                 }
                 if (MessageBox.Show("解压完毕,是否打开解压目录？", "", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) == DialogResult.OK)

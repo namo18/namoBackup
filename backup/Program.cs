@@ -117,7 +117,6 @@ namespace backupCommand
             readDef(defFile);
 
             sql = SqlClass.GetInstance();
-            sql.init();
 
             ThreadPool.SetMaxThreads(20, 20);
             string log_directory = string.Format("{0}\\log\\{1}", curFile.DirectoryName, DateTime.Now.ToString("yyyy-M-d"));
@@ -127,7 +126,7 @@ namespace backupCommand
 
             try
             {
-
+                sql.init();
                 foreach (DirectoryInfo folder in backupFolderList)
                 {
                     StreamWriter sw = new StreamWriter(string.Format("{0}\\{1}_{2}.txt", log_directory, folder.Name, DateTime.Now.ToString("yyyy-M-d HH-mm-ss")));
@@ -238,6 +237,7 @@ namespace backupCommand
                                 {
                                     //Console.WriteLine(String.Format("BackupFile:{0} {1}", md5, fileInfo.FullName));
                                     Backup(fileInfo, new DirectoryInfo(backupTargetDir), md5, sw);
+                                    sql.AddMd5(md5);
                                 }
 
                                 sql.insert(fileInfo, md5, folderId,histroyId);

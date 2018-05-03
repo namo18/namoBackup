@@ -32,28 +32,64 @@ namespace backupCommand
 
         public void init()
         {
-            MySqlDataAdapter adp = new MySqlDataAdapter("select id,path from tb_path", conn);
+            int startIndex = 0;
+            int SELECT_COUNT_PER = 30000;
+
+            MySqlDataAdapter adp = new MySqlDataAdapter();
             DataTable dt = new DataTable();
-            adp.Fill(dt);
-            foreach (DataRow row in dt.Rows)
+
+            MySqlCommand selectCommand = conn.CreateCommand();
+            while (true)
             {
-                path_dict.Add(row["path"].ToString(), row["id"].ToString());
+                selectCommand.CommandText = string.Format("select id,path from tb_path limit {0}, {1}", startIndex, SELECT_COUNT_PER);
+                adp.SelectCommand = selectCommand;
+                adp.Fill(dt);
+
+                if (dt.Rows.Count == 0) break;
+
+                foreach (DataRow row in dt.Rows)
+                {
+                    if (!path_dict.ContainsKey(row["path"].ToString()))
+                        path_dict.Add(row["path"].ToString(), row["id"].ToString());
+                }
+                dt.Clear();
+                startIndex += SELECT_COUNT_PER;
             }
             dt.Clear();
-            adp.SelectCommand.CommandText = "select id,filename from filename";
-            adp.Fill(dt);
-            foreach (DataRow row in dt.Rows)
+
+            startIndex = 0;
+            while (true)
             {
-                file_name_dict.Add(row["filename"].ToString(), row["id"].ToString());
+                selectCommand.CommandText = string.Format("select id,filename from filename limit {0}, {1}",startIndex, SELECT_COUNT_PER);
+                adp.SelectCommand = selectCommand;
+                adp.Fill(dt);
+
+                if (dt.Rows.Count == 0) break;
+                foreach (DataRow row in dt.Rows)
+                {
+                    if (!file_name_dict.ContainsKey(row["filename"].ToString()))
+                        file_name_dict.Add(row["filename"].ToString(), row["id"].ToString());
+                }
+                dt.Clear();
+                startIndex += SELECT_COUNT_PER;
             }
-
             dt.Clear();
-            adp.SelectCommand.CommandText = "select md5 from backupinfo group by md5";
-            adp.Fill(dt);
 
-            foreach (DataRow row in dt.Rows)
+            startIndex = 0;
+            while (true)
             {
-                exist_md5.Add(row["md5"].ToString());
+                selectCommand.CommandText = string.Format("select md5 from md5 limit {0}, {1}", startIndex, SELECT_COUNT_PER);
+                adp.SelectCommand = selectCommand;
+                adp.Fill(dt);
+
+                if (dt.Rows.Count == 0) break;
+
+                foreach (DataRow row in dt.Rows)
+                {
+                    exist_md5.Add(row["md5"].ToString());
+                }
+                dt.Clear();
+                startIndex += SELECT_COUNT_PER;
             }
         }
         public static SqlClass GetInstance()
@@ -141,15 +177,45 @@ namespace backupCommand
             throw new NotImplementedException();
         }
 
-        public DataTable getFileList(DateTime datetime, int pathId)
+        public void AddMd5(string md5)
+        {
+            try
+            {
+                lock (connectionLocker)
+                {
+                    if (conn.State != ConnectionState.Open) conn.Open();
+
+                    MySqlCommand sqlcmd = conn.CreateCommand();
+
+                    sqlcmd.CommandText = String.Format("INSERT INTO `md5` (`md5`) VALUES ('{0}')",md5);
+
+                    sqlcmd.ExecuteNonQuery();
+
+                    exist_md5.Add(md5);
+                }
+            }
+            catch (Exception err)
+            {
+                throw err;
+            }
+            finally
+            {
+                if (conn.State == ConnectionState.Open)
+                {
+                    conn.Close();
+                }
+            }
+        }
+
+        public DataTable getFileList(int histroyId, int pathId)
         {
             DataTable table = new DataTable();
             try
             {
                 string selectCommand = string.Format(@"select t1.id as id, t1.filename as filename,t2.modifydate as modifydate, t2.md5 as md5 from filename as t1 right join 
-(select filename_id,modifydate,md5 from backupinfo where backup_date between '{0}' and '{1}' and filepath_id = {2}) as t2
-on t2.filename_id = t1.id", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1).AddHours(12).ToString("yyyy-MM-dd HH:mm"), pathId);
-                //Console.WriteLine(selectCommand);
+(select filename_id,modifydate,md5 from backupinfo where histroy_id = {0} and filepath_id = {1}) as t2
+on t2.filename_id = t1.id", histroyId, pathId);
+                Console.WriteLine(selectCommand);
 
                 MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
 
@@ -274,26 +340,31 @@ on t2.filename_id = t1.id", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1)
         /// </summary>
         /// <param name="datetime">备份日期</param>
         /// <returns>返回数据库中根目录id列表</returns>
-        public int[] getRestoreBasePath(DateTime datetime)
+        public Dictionary<int, int> getRestoreBasePath(DateTime datetime)
         {
-            int[] basePathIds;
-            string selectCommand = string.Format(@"select * from tb_path where id in (
-SELECT filepath_id FROM filebackupsys.backupinfo
-where backup_date between '{0}' and '{1}'
-group by filepath_id
-)
-and parentid = -1", datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1).ToString("yyyy-MM-dd"));
-
+            Dictionary<int, int> basePathIds = new Dictionary<int, int>();            
+            string selectCommand = string.Format(@"select id,path_id from histroy where backup_date between '{0}' and '{1}'", 
+                datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1).ToString("yyyy-MM-dd"));
+            Console.WriteLine(selectCommand);
             MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
 
             DataTable dt = new DataTable();
             adp.Fill(dt);
-            basePathIds = new int[dt.Rows.Count];
+            //basePathIds = new int[dt.Rows.Count];
 
             for (int i = 0; i < dt.Rows.Count; i++)
             {
-                basePathIds[i] = (int)dt.Rows[i]["id"];
+                int path_id;
+                int histroy_id;
+                int.TryParse(dt.Rows[i]["path_id"].ToString(), out path_id);
+                int.TryParse(dt.Rows[i]["id"].ToString(), out histroy_id);
+                if (!basePathIds.ContainsKey(path_id))
+                {
+                    basePathIds.Add(path_id, histroy_id);
+                }
+                //basePathIds[i] = (int)dt.Rows[i]["id"];
             }
+            Console.WriteLine(basePathIds.Keys.Count);
             return basePathIds;
         }
 
@@ -307,7 +378,7 @@ where parentid = {0};", id);
             adp.Fill(dt);
             return dt;
         }
-        public DataTable getPathList(int[] ids)
+        public DataTable getPathList(Dictionary<int,int>.KeyCollection ids)
         {
             string selectCommand = @"select id, path, parentid from tb_path where id in (";
             foreach (int i in ids)
@@ -316,7 +387,7 @@ where parentid = {0};", id);
             }
 
             selectCommand += "'');";
-
+            Console.WriteLine(selectCommand);
             MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
 
             DataTable dt = new DataTable();

@@ -11,6 +11,7 @@ namespace backupCommand
     {
         private readonly int CACHE_SIZE = 20;
         private MySqlConnection conn;
+        private static string ConnectionString;
         private static SqlClass instance;
         private static Dictionary<string, string> file_name_dict = new Dictionary<string, string>();
         private static Dictionary<string, string> path_dict = new Dictionary<string, string>();
@@ -23,10 +24,11 @@ namespace backupCommand
         public static readonly object connectionLocker = new object();
         public static readonly object fileNameLocker = new object();
         public static readonly object folderLocker = new object();
+        public static readonly object cacheLocker = new object();
 
         private SqlClass()
         {
-            string ConnectionString = string.Format(@"server={0};port=3306;user id={1};password={2};database={3};allow zero datetime=true", SERVER_HOST, SQL_USER, SQL_PASSWORD, DATABASE_NAME);
+            ConnectionString = string.Format(@"server={0};port=3306;user id={1};password={2};database={3};allow zero datetime=true", SERVER_HOST, SQL_USER, SQL_PASSWORD, DATABASE_NAME);
             this.conn = new MySqlConnection(ConnectionString);
         }
 
@@ -103,13 +105,11 @@ namespace backupCommand
 
         public string getNewBackupHistroyId(string folderId)
         {
+            MySqlConnection mConn = new MySqlConnection(ConnectionString);
             try
             {
-                if (conn.State != ConnectionState.Open)
-                {
-                    conn.Open();
-                }
-                MySqlCommand sqlcmd = conn.CreateCommand();
+                mConn.Open();
+                MySqlCommand sqlcmd = mConn.CreateCommand();
                 sqlcmd.CommandText = string.Format(@"INSERT INTO `filebackupsys`.`histroy` (`backup_date`,`path_id`) VALUES ('{0}',{1});",
                     DateTime.Now.ToString("yyyy-MM-dd"), folderId);
 
@@ -123,9 +123,9 @@ namespace backupCommand
             }
             finally
             {
-                if (conn.State == ConnectionState.Open)
+                if (mConn.State == ConnectionState.Open)
                 {
-                    conn.Close();
+                    mConn.Close();
                 }
             }
         }
@@ -140,21 +140,17 @@ namespace backupCommand
                 }
                 else
                 {
+                    MySqlConnection mConn = new MySqlConnection(ConnectionString);
                     try
                     {
-                        lock (connectionLocker)
-                        {
-                            if (conn.State != ConnectionState.Open)
-                            {
-                                conn.Open();
-                            }
-                            MySqlCommand sqlcmd = conn.CreateCommand();
-                            sqlcmd.CommandText = string.Format(@"INSERT INTO `filename` (`filename`) values('{0}')", filename.Replace("'", "\\'"));
+                        mConn.Open();
+                        MySqlCommand sqlcmd = mConn.CreateCommand();
+                        sqlcmd.CommandText = string.Format(@"INSERT INTO `filename` (`filename`) values('{0}')", filename.Replace("'", "\\'"));
 
-                            sqlcmd.ExecuteNonQuery();
-                            file_name_dict.Add(filename, sqlcmd.LastInsertedId.ToString());
-                            return sqlcmd.LastInsertedId.ToString();
-                        }
+                        sqlcmd.ExecuteNonQuery();
+                        file_name_dict.Add(filename, sqlcmd.LastInsertedId.ToString());
+                        return sqlcmd.LastInsertedId.ToString();
+
                     }
                     catch (Exception e)
                     {
@@ -162,9 +158,9 @@ namespace backupCommand
                     }
                     finally
                     {
-                        if (conn.State == ConnectionState.Open)
+                        if (mConn.State == ConnectionState.Open)
                         {
-                            conn.Close();
+                            mConn.Close();
                         }
                     }
                 }
@@ -179,20 +175,19 @@ namespace backupCommand
 
         public void AddMd5(string md5)
         {
+
+            MySqlConnection mConn = new MySqlConnection(ConnectionString);
             try
             {
-                lock (connectionLocker)
-                {
-                    if (conn.State != ConnectionState.Open) conn.Open();
+                mConn.Open();
 
-                    MySqlCommand sqlcmd = conn.CreateCommand();
+                MySqlCommand sqlcmd = mConn.CreateCommand();
 
-                    sqlcmd.CommandText = String.Format("INSERT INTO `md5` (`md5`) VALUES ('{0}')",md5);
+                sqlcmd.CommandText = String.Format("INSERT INTO `md5` (`md5`) VALUES ('{0}')", md5);
 
-                    sqlcmd.ExecuteNonQuery();
+                sqlcmd.ExecuteNonQuery();
 
-                    exist_md5.Add(md5);
-                }
+                exist_md5.Add(md5);
             }
             catch (Exception err)
             {
@@ -200,9 +195,9 @@ namespace backupCommand
             }
             finally
             {
-                if (conn.State == ConnectionState.Open)
+                if (mConn.State == ConnectionState.Open)
                 {
-                    conn.Close();
+                    mConn.Close();
                 }
             }
         }
@@ -232,17 +227,14 @@ on t2.filename_id = t1.id", histroyId, pathId);
         {
             try
             {
-                lock (connectionLocker)
+                string fileNameId = getFileNameId(fi.Name);
+
+                string now = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss");
+                string fileModifyDate = fi.LastWriteTime.ToString("yyyy-MM-dd HH-mm-ss");
+
+                lock (cacheLocker)
                 {
-                    string fileNameId = getFileNameId(fi.Name);
-
-                    string now = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss");
-                    string fileModifyDate = fi.LastWriteTime.ToString("yyyy-MM-dd HH-mm-ss");
-
-                    lock (InsertCache)
-                    {
-                        InsertCache.Add(string.Format(@"('{0}','{1}','{2}','{3}','{4}','{5}')", now, filePathId, fileNameId, fileModifyDate, md5,histroyId));
-                    }
+                    InsertCache.Add(string.Format(@"('{0}','{1}','{2}','{3}','{4}','{5}')", now, filePathId, fileNameId, fileModifyDate, md5, histroyId));
                     if (InsertCache.Count >= CACHE_SIZE)
                     {
                         save_cache();
@@ -257,35 +249,34 @@ on t2.filename_id = t1.id", histroyId, pathId);
 
         public void save_cache()
         {
+            MySqlConnection mConn = new MySqlConnection(ConnectionString);
+            List<string> temp = InsertCache;
+            InsertCache = new List<string>();
+            string errsql = "";
             try
             {
-                if (InsertCache.Count == 0) return;
-                if (conn.State != ConnectionState.Open) conn.Open();
+                if (temp.Count == 0) return;
+                mConn.Open();
 
-                MySqlCommand sqlcmd = conn.CreateCommand();
+                MySqlCommand sqlcmd = mConn.CreateCommand();
 
                 sqlcmd.CommandText = "INSERT INTO `backupinfo` (`backup_date`,`filepath_id`,`filename_id`,`modifydate`,`md5`,`histroy_id`)VALUES ";
-                foreach (string values in InsertCache)
+                foreach (string values in temp)
                 {
                     sqlcmd.CommandText += values + ",";
                 }
                 sqlcmd.CommandText = sqlcmd.CommandText.Substring(0, sqlcmd.CommandText.Length - 1);
-                //Console.WriteLine(sqlcmd.CommandText);
+                errsql = sqlcmd.CommandText;
                 sqlcmd.ExecuteNonQuery();
-
-                InsertCache.Clear();
-
             }
             catch (Exception err)
             {
+                Console.WriteLine(errsql);
                 throw err;
             }
             finally
             {
-                if (conn.State == ConnectionState.Open)
-                {
-                    conn.Close();
-                }
+                mConn.Dispose();
             }
         }
 
@@ -301,20 +292,19 @@ on t2.filename_id = t1.id", histroyId, pathId);
                 }
                 else
                 {
+                    MySqlConnection mConn = new MySqlConnection(ConnectionString);
                     try
                     {
-                        MySqlCommand sqlcmd = conn.CreateCommand();
-                        lock (connectionLocker)
-                        {
-                            conn.Open();
-                            sqlcmd.CommandText = string.Format(@"INSERT INTO `tb_path` (`path`,`parentId`) VALUES ('{0}',{1});", fpath.Replace("\\", "\\\\").Replace("'", "\\'"), parentFoloderId);
+                        MySqlCommand sqlcmd = mConn.CreateCommand();
 
-                            sqlcmd.ExecuteNonQuery();
-                            retid = sqlcmd.LastInsertedId.ToString();
-                            conn.Close();
-                            path_dict.Add(fpath, retid);
-                            return retid;
-                        }
+                        mConn.Open();
+                        sqlcmd.CommandText = string.Format(@"INSERT INTO `tb_path` (`path`,`parentId`) VALUES ('{0}',{1});", fpath.Replace("\\", "\\\\").Replace("'", "\\'"), parentFoloderId);
+
+                        sqlcmd.ExecuteNonQuery();
+                        retid = sqlcmd.LastInsertedId.ToString();
+                        path_dict.Add(fpath, retid);
+                        return retid;
+
                     }
                     catch (Exception e)
                     {
@@ -322,10 +312,7 @@ on t2.filename_id = t1.id", histroyId, pathId);
                     }
                     finally
                     {
-                        if (conn.State == ConnectionState.Open)
-                        {
-                            conn.Close();
-                        }
+                        mConn.Dispose();
                     }
                 }
             }

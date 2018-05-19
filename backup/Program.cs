@@ -126,7 +126,7 @@ namespace backupCommand
 
             try
             {
-                sql.init();
+                sql.Init();
                 foreach (DirectoryInfo folder in backupFolderList)
                 {
                     StreamWriter sw = new StreamWriter(string.Format("{0}\\{1}_{2}.txt", log_directory, folder.Name, DateTime.Now.ToString("yyyy-M-d HH-mm-ss")));
@@ -137,7 +137,7 @@ namespace backupCommand
                         p.folder = folder;
                         p.parendFolderId = "-1";
                         p.sw = sw;
-                        p.histroyId = sql.getNewBackupHistroyId(sql.getFolderPathId(p.folder.FullName, p.parendFolderId));
+                        p.histroyId = sql.GetNewBackupHistroyId(sql.GetFolderPathId(p.folder.FullName, p.parendFolderId));
                         //Thread thread = new Thread(new ParameterizedThreadStart(backupFolder));
                         lock (countObj) mThreadCount++;
                         //thread.Start(p);
@@ -173,7 +173,7 @@ namespace backupCommand
                 Console.WriteLine("Thread Count:" + mThreadCount.ToString());
                 if (mThreadCount <= 0)
                 {
-                    sql.save_cache();
+                    sql.Save_cache();
                     break;
                 }
             }
@@ -223,7 +223,7 @@ namespace backupCommand
                 if (isIgnoreFolder(folder)) return;
 
                 FileInfo[] files = folder.GetFiles();
-                string folderId = sql.getFolderPathId(folder.FullName, parentFolderId);
+                string folderId = sql.GetFolderPathId(folder.FullName, parentFolderId);
                 foreach (FileInfo fileInfo in files)
                 {
                     try
@@ -233,14 +233,14 @@ namespace backupCommand
                             string md5 = quick_hash(fileInfo, sw);
                             if (md5.Length > 5)
                             {
-                                if (!sql.checkExist(md5))
+                                if (!sql.CheckExist(md5))
                                 {
                                     //Console.WriteLine(String.Format("BackupFile:{0} {1}", md5, fileInfo.FullName));
                                     Backup(fileInfo, new DirectoryInfo(backupTargetDir), md5, sw);
                                     sql.AddMd5(md5);
                                 }
 
-                                sql.insert(fileInfo, md5, folderId,histroyId);
+                                sql.Insert(fileInfo, md5, folderId,histroyId);
                             }
                         }
                     }

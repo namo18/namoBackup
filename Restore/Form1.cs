@@ -9,6 +9,7 @@ using backupCommand;
 using System.IO;
 using System.Diagnostics;
 using SevenZip;
+using System.Text.RegularExpressions;
 
 namespace Restore
 {
@@ -17,6 +18,7 @@ namespace Restore
         public int pathid;
         public bool loaded;
         public int histroy_id;
+        public string backupTable;
     }
 
     public partial class Form1 : Form
@@ -25,6 +27,8 @@ namespace Restore
         public SqlClass sql;
         public static string SAVE_FOLDER;        
         static public string PASSWORD = "avic64";
+        public static List<String> ignore_Folder = new List<string>();
+        public static List<DirectoryInfo> excludeFolderList = new List<DirectoryInfo>();
         public Form1()
         {
             InitializeComponent();
@@ -59,6 +63,11 @@ namespace Restore
                     {
                         SqlClass.SQL_PASSWORD = line[1].Trim();
                     }
+                    else if (line.Length > 1 && line[0].Trim().ToUpper() == "EXCLUDE_FOLDER")
+                    {
+                        DirectoryInfo excludeFolder = new DirectoryInfo(line[1].Trim());
+                        excludeFolderList.Add(excludeFolder);
+                    }
                 }
             }
         }
@@ -72,27 +81,41 @@ namespace Restore
             sql = SqlClass.GetInstance();
 
         }
+
+        public static bool IsIgnoreFolder(DirectoryInfo dInfo)
+        {
+            foreach (string pattern in ignore_Folder)
+            {
+                if (Regex.IsMatch(dInfo.Name.ToLower(), pattern))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
         private void dateTimePicker1_ValueChanged(object sender, EventArgs e)
         {
             treeView1.Nodes.Clear();
             DateTime dt;
             DateTime.TryParse(dateTimePicker1.Text, out dt);
 
-            Dictionary<int,int> basePathIds = sql.getRestoreBasePath(dt);
+            Dictionary<int,ID_Table> basePathIds = sql.GetRestoreBasePath(dt);
             textBox1.Text = basePathIds.Keys.Count.ToString();
             
 
-            DataTable pathTable = sql.getPathList(basePathIds.Keys);
+            DataTable pathTable = sql.GetPathList(basePathIds.Keys);
             foreach (DataRow row in pathTable.Rows)
             {
                 DirectoryInfo dirInfo = new DirectoryInfo(row["path"].ToString());
 
                 TreeNode node = new TreeNode(dirInfo.Name, 0, 0);
-                MyNodeTag nodeTag = new MyNodeTag();
-                nodeTag.pathid = (int)row["id"];
-                nodeTag.loaded = false;
-                nodeTag.histroy_id = basePathIds[(int)row["id"]];
-
+                MyNodeTag nodeTag = new MyNodeTag
+                {
+                    pathid = (int)row["id"],
+                    loaded = false,
+                    histroy_id = basePathIds[(int)row["id"]].histroy_id,
+                    backupTable = basePathIds[(int)row["id"]].table_name                    
+                };
                 node.Tag = nodeTag;
                 node.Nodes.Add("None");
                 treeView1.Nodes.Add(node);
@@ -110,7 +133,7 @@ namespace Restore
 
                 currNode.Tag = tag;
 
-                DataTable pathTable = sql.getChildDirectory(tag.pathid);
+                DataTable pathTable = sql.GetChildDirectory(tag.pathid);
 
 
                 foreach (DataRow row in pathTable.Rows)
@@ -118,10 +141,14 @@ namespace Restore
                     DirectoryInfo dirInfo = new DirectoryInfo(row["path"].ToString());
 
                     TreeNode node = new TreeNode(dirInfo.Name, 0, 0);
-                    MyNodeTag nodeTag = new MyNodeTag();
-                    nodeTag.pathid = (int)row["id"];
-                    nodeTag.loaded = false;
-                    nodeTag.histroy_id = tag.histroy_id;
+                    MyNodeTag nodeTag = new MyNodeTag
+                    {
+                        pathid = (int)row["id"],
+                        loaded = false,
+                        histroy_id = tag.histroy_id,
+                        backupTable = tag.backupTable
+                    };
+
                     node.Tag = nodeTag;
                     node.Nodes.Add("None");
                     currNode.Nodes.Add(node);
@@ -134,7 +161,7 @@ namespace Restore
             listView1.Items.Clear();
             MyNodeTag nodeTag = (MyNodeTag)e.Node.Tag;
             textBox1.Text = nodeTag.pathid.ToString();
-            DataTable dt = sql.getFileList(nodeTag.histroy_id, nodeTag.pathid);
+            DataTable dt = sql.GetFileList(nodeTag.histroy_id, nodeTag.pathid, nodeTag.backupTable);
             
             foreach(DataRow row in dt.Rows)
             {

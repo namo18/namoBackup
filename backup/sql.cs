@@ -7,6 +7,11 @@ using System.Data;
 
 namespace backupCommand
 {
+    public class ID_Table
+    {
+        public int histroy_id;
+        public string table_name;
+    }
     public class SqlClass
     {
         private readonly int CACHE_SIZE = 20;
@@ -25,6 +30,7 @@ namespace backupCommand
         public static readonly object fileNameLocker = new object();
         public static readonly object folderLocker = new object();
         public static readonly object cacheLocker = new object();
+        private string currentBackupTable;
 
         private SqlClass()
         {
@@ -32,13 +38,31 @@ namespace backupCommand
             this.conn = new MySqlConnection(ConnectionString);
         }
 
-        public void init()
+        public void Init()
         {
             int startIndex = 0;
             int SELECT_COUNT_PER = 30000;
 
+            currentBackupTable = "backup_" + DateTime.Now.ToString("yyyyMM");
+
             MySqlDataAdapter adp = new MySqlDataAdapter();
             DataTable dt = new DataTable();
+
+            MySqlCommand createCommand = conn.CreateCommand();
+            createCommand.CommandText = string.Format(@"CREATE TABLE IF NOT EXISTS `{0}` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `backup_date` datetime DEFAULT NULL,
+  `filepath_id` int(11) DEFAULT NULL,
+  `filename_id` int(11) DEFAULT NULL,
+  `modifydate` datetime DEFAULT NULL,
+  `md5` varchar(45) DEFAULT NULL,
+  `histroy_id` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8;", currentBackupTable);
+            conn.Open();
+            createCommand.ExecuteNonQuery();
+            conn.Close();
+
 
             MySqlCommand selectCommand = conn.CreateCommand();
             while (true)
@@ -103,15 +127,15 @@ namespace backupCommand
             return instance;
         }
 
-        public string getNewBackupHistroyId(string folderId)
+        public string GetNewBackupHistroyId(string folderId)
         {
             MySqlConnection mConn = new MySqlConnection(ConnectionString);
             try
             {
                 mConn.Open();
                 MySqlCommand sqlcmd = mConn.CreateCommand();
-                sqlcmd.CommandText = string.Format(@"INSERT INTO `filebackupsys`.`histroy` (`backup_date`,`path_id`) VALUES ('{0}',{1});",
-                    DateTime.Now.ToString("yyyy-MM-dd"), folderId);
+                sqlcmd.CommandText = string.Format(@"INSERT INTO `filebackupsys`.`histroy` (`backup_date`,`path_id`, `backup_table`) VALUES ('{0}',{1},'{2}');",
+                    DateTime.Now.ToString("yyyy-MM-dd  HH-mm-ss"), folderId, currentBackupTable);
 
                 sqlcmd.ExecuteNonQuery();
                 
@@ -130,7 +154,7 @@ namespace backupCommand
             }
         }
 
-        public string getFileNameId(string filename)
+        public string GetFileNameId(string filename)
         {
             lock (fileNameLocker)
             {
@@ -202,14 +226,15 @@ namespace backupCommand
             }
         }
 
-        public DataTable getFileList(int histroyId, int pathId)
+        public DataTable GetFileList(int histroyId, int pathId,string backupTable)
         {
+
             DataTable table = new DataTable();
             try
             {
                 string selectCommand = string.Format(@"select t1.id as id, t1.filename as filename,t2.modifydate as modifydate, t2.md5 as md5 from filename as t1 right join 
-(select filename_id,modifydate,md5 from backupinfo where histroy_id = {0} and filepath_id = {1}) as t2
-on t2.filename_id = t1.id", histroyId, pathId);
+(select filename_id,modifydate,md5 from {2} where histroy_id = {0} and filepath_id = {1}) as t2
+on t2.filename_id = t1.id", histroyId, pathId, backupTable);
                 Console.WriteLine(selectCommand);
 
                 MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
@@ -223,11 +248,11 @@ on t2.filename_id = t1.id", histroyId, pathId);
             return table;
         }
 
-        public void insert(FileInfo fi, string md5, string filePathId,string histroyId)
+        public void Insert(FileInfo fi, string md5, string filePathId,string histroyId)
         {
             try
             {
-                string fileNameId = getFileNameId(fi.Name);
+                string fileNameId = GetFileNameId(fi.Name);
 
                 string now = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss");
                 string fileModifyDate = fi.LastWriteTime.ToString("yyyy-MM-dd HH-mm-ss");
@@ -237,7 +262,7 @@ on t2.filename_id = t1.id", histroyId, pathId);
                     InsertCache.Add(string.Format(@"('{0}','{1}','{2}','{3}','{4}','{5}')", now, filePathId, fileNameId, fileModifyDate, md5, histroyId));
                     if (InsertCache.Count >= CACHE_SIZE)
                     {
-                        save_cache();
+                        Save_cache();
                     }
                 }
             }
@@ -247,7 +272,7 @@ on t2.filename_id = t1.id", histroyId, pathId);
             }
         }
 
-        public void save_cache()
+        public void Save_cache()
         {
             MySqlConnection mConn = new MySqlConnection(ConnectionString);
             List<string> temp = InsertCache;
@@ -260,7 +285,7 @@ on t2.filename_id = t1.id", histroyId, pathId);
 
                 MySqlCommand sqlcmd = mConn.CreateCommand();
 
-                sqlcmd.CommandText = "INSERT INTO `backupinfo` (`backup_date`,`filepath_id`,`filename_id`,`modifydate`,`md5`,`histroy_id`)VALUES ";
+                sqlcmd.CommandText = string.Format("INSERT INTO `{0}` (`backup_date`,`filepath_id`,`filename_id`,`modifydate`,`md5`,`histroy_id`)VALUES ",currentBackupTable);
                 foreach (string values in temp)
                 {
                     sqlcmd.CommandText += values + ",";
@@ -281,7 +306,7 @@ on t2.filename_id = t1.id", histroyId, pathId);
         }
 
 
-        public string getFolderPathId(string fpath, string parentFoloderId)
+        public string GetFolderPathId(string fpath, string parentFoloderId)
         {
             lock (folderLocker)
             {
@@ -318,7 +343,7 @@ on t2.filename_id = t1.id", histroyId, pathId);
             }
         }
 
-        public bool checkExist(string md5)
+        public bool CheckExist(string md5)
         {
             return exist_md5.Contains(md5);
         }
@@ -327,11 +352,11 @@ on t2.filename_id = t1.id", histroyId, pathId);
         /// </summary>
         /// <param name="datetime">备份日期</param>
         /// <returns>返回数据库中根目录id列表</returns>
-        public Dictionary<int, int> getRestoreBasePath(DateTime datetime)
+        public Dictionary<int, ID_Table> GetRestoreBasePath(DateTime datetime)
         {
-            Dictionary<int, int> basePathIds = new Dictionary<int, int>();            
-            string selectCommand = string.Format(@"select id,path_id from histroy where backup_date between '{0}' and '{1}'", 
-                datetime.ToString("yyyy-MM-dd"), datetime.AddDays(1).ToString("yyyy-MM-dd"));
+            Dictionary<int, ID_Table> basePathIds = new Dictionary<int, ID_Table>();            
+            string selectCommand = string.Format(@"select id,path_id,backup_table from histroy where backup_date between '{0}' and '{1}'", 
+                datetime.ToString("yyyy-MM-dd HH-mm-ss"), datetime.AddHours(23.9).ToString("yyyy-MM-dd HH-mm-ss"));
             Console.WriteLine(selectCommand);
             MySqlDataAdapter adp = new MySqlDataAdapter(selectCommand, conn);
 
@@ -341,21 +366,24 @@ on t2.filename_id = t1.id", histroyId, pathId);
 
             for (int i = 0; i < dt.Rows.Count; i++)
             {
+                ID_Table table = new ID_Table();
                 int path_id;
                 int histroy_id;
                 int.TryParse(dt.Rows[i]["path_id"].ToString(), out path_id);
                 int.TryParse(dt.Rows[i]["id"].ToString(), out histroy_id);
+                table.histroy_id = histroy_id;
+                table.table_name = dt.Rows[i]["backup_table"].ToString();
                 if (!basePathIds.ContainsKey(path_id))
                 {
-                    basePathIds.Add(path_id, histroy_id);
+                    basePathIds.Add(path_id, table);
                 }
                 //basePathIds[i] = (int)dt.Rows[i]["id"];
             }
-            Console.WriteLine(basePathIds.Keys.Count);
+            //Console.WriteLine(basePathIds.Keys.Count);
             return basePathIds;
         }
 
-        public DataTable getChildDirectory(int id)
+        public DataTable GetChildDirectory(int id)
         {
             string selectCommand = string.Format(@"select id, path, parentid 
 from tb_path 
@@ -365,7 +393,7 @@ where parentid = {0};", id);
             adp.Fill(dt);
             return dt;
         }
-        public DataTable getPathList(Dictionary<int,int>.KeyCollection ids)
+        public DataTable GetPathList(Dictionary<int,ID_Table>.KeyCollection ids)
         {
             string selectCommand = @"select id, path, parentid from tb_path where id in (";
             foreach (int i in ids)
